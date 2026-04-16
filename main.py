@@ -27,7 +27,7 @@ def cmd_train(args):
 
     import training.train as train_module
     train_module.NUM_EPISODES = cfg.training.num_episodes
-    train_module.main(resume_from=args.resume)
+    train_module.main(resume_from=args.resume, output_dir=args.output_dir)
 
 
 def cmd_search(args):
@@ -97,8 +97,11 @@ Ví dụ:
     p_train = sub.add_parser("train", help="Train DQN agent")
     p_train.add_argument("--episodes", type=int, default=None,
                          help="Override số episode (mặc định: lấy từ config.yaml)")
-    p_train.add_argument("--resume", type=str, default=None, metavar="CHECKPOINT",
+    p_train.add_argument("--resume",     type=str, default=None, metavar="CHECKPOINT",
                          help="Tiếp tục train từ checkpoint .pt")
+    p_train.add_argument("--output-dir", type=str, default="checkpoints", metavar="DIR",
+                         help="Thư mục lưu checkpoint (mặc định: checkpoints/). "
+                              "Dùng /drive/MyDrive/... trên Colab")
 
     # search
     p_search = sub.add_parser("search", help="Hyperparameter grid/random search")

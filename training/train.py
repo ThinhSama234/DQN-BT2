@@ -34,7 +34,7 @@ best_eval_return = float("-inf")
 SAVE_EVERY = 200   # lưu checkpoint định kỳ mỗi n episode
 
 
-def train(resume_from: str = None):
+def train(resume_from: str = None, output_dir: str = "checkpoints"):
     global global_step, best_eval_return
 
     # ── Resume từ checkpoint ──────────────────────────────────────────────────
@@ -115,7 +115,8 @@ def train(resume_from: str = None):
 
         # ── Periodic save ─────────────────────────────────────────────────────
         if episode % SAVE_EVERY == 0:
-            path = save_checkpoint(q_net, optimizer, episode, global_step, cfg)
+            path = save_checkpoint(q_net, optimizer, episode, global_step, cfg,
+                                   save_dir=output_dir)
             logger.info("Checkpoint saved → %s", path)
 
         # ── Evaluation mỗi 20 episode ─────────────────────────────────────────
@@ -140,7 +141,7 @@ def train(resume_from: str = None):
             # Lưu best model
             if ret_eval > best_eval_return:
                 best_eval_return = ret_eval
-                save_best(q_net)
+                save_best(q_net, save_dir=output_dir)
                 logger.info("New best eval return=%.1f at ep=%d → best_model.pt saved", ret_eval, episode)
 
             msg = (f"[Eval ep {episode:>5}] return={ret_eval:.1f}"
@@ -153,14 +154,15 @@ def train(resume_from: str = None):
     print("Training complete.")
 
 
-def main(resume_from: str = None):
+def main(resume_from: str = None, output_dir: str = "checkpoints"):
     log_setup()
     if resume_from:
-        logger.info("Resuming training from %s", resume_from)
+        logger.info("Resuming training from %s | output_dir=%s", resume_from, output_dir)
     else:
-        logger.info("Starting training | device=%s | episodes=%d", DEVICE, NUM_EPISODES)
+        logger.info("Starting training | device=%s | episodes=%d | output_dir=%s",
+                    DEVICE, NUM_EPISODES, output_dir)
 
-    train(resume_from=resume_from)
+    train(resume_from=resume_from, output_dir=output_dir)
 
     # ── Plots sau khi train xong ──────────────────────────────────────────────
     os.makedirs("plots", exist_ok=True)
