@@ -2,12 +2,16 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import random
+import torch
+
 from training.load_models import (
     cfg, train_env, q_net, target_net, optimizer, replay,
     obs_dim, num_actions, DEVICE,
     SEED, NUM_EPISODES, MAX_STEPS_PER_EPISODE,
     LEARN_START, LEARN_EVERY, BATCH_SIZE, TARGET_SYNC_EVERY,
-    epsilon_by_step, dqn_update, make_legal_mask, masked_greedy_action,
+    epsilon_by_step, guide_prob_by_step, dqn_update,
+    make_legal_mask, masked_greedy_action, guide,
     main as log_setup,
 )
 from environment_game import OpenSpiel2048Env
@@ -30,12 +34,24 @@ best_eval_return = float("-inf")
 SAVE_EVERY = 200   # lưu checkpoint định kỳ mỗi n episode
 
 
-def train():
+def train(resume_from: str = None):
     global global_step, best_eval_return
 
-    recent_loss = 0.0   # loss update gần nhất để hiển thị trên bar
+    # ── Resume từ checkpoint ──────────────────────────────────────────────────
+    start_episode = 1
+    if resume_from:
+        ckpt = torch.load(resume_from, map_location=DEVICE, weights_only=False)
+        q_net.load_state_dict(ckpt["q_net_state_dict"])
+        target_net.load_state_dict(ckpt["q_net_state_dict"])
+        optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+        global_step   = ckpt.get("global_step", 0)
+        start_episode = ckpt.get("episode", 0) + 1
+        tqdm.write(f"Resumed from checkpoint: ep={start_episode-1}, step={global_step}")
+        logger.info("Resumed from %s | ep=%d step=%d", resume_from, start_episode-1, global_step)
 
-    pbar = tqdm(range(1, NUM_EPISODES + 1), desc="Training", dynamic_ncols=True)
+    recent_loss = 0.0
+
+    pbar = tqdm(range(start_episode, NUM_EPISODES + 1), desc="Training", dynamic_ncols=True)
     for episode in pbar:
         obs  = train_env.reset(seed=SEED + episode)
         done = False
@@ -49,14 +65,16 @@ def train():
                 break
             legal_mask = make_legal_mask(num_actions, legal)
 
-            action = masked_greedy_action(
-                qnet=q_net,
-                obs=obs,
-                legal_actions_list=legal,
-                num_actions=num_actions,
-                epsilon=eps,
-                device=DEVICE,
-            )
+            # ExpectiMax guide trong giai đoạn đầu (cold start)
+            g_prob = guide_prob_by_step(global_step)
+            if guide is not None and random.random() < g_prob:
+                action = guide.best_action(train_env.state, legal)
+            else:
+                action = masked_greedy_action(
+                    qnet=q_net, obs=obs,
+                    legal_actions_list=legal, num_actions=num_actions,
+                    epsilon=eps, device=DEVICE,
+                )
 
             next_obs, reward, done, info = train_env.step(action)
             next_legal      = info["legal_actions"] if not done else []
@@ -85,10 +103,12 @@ def train():
                      episode, ep_return, ep_len, epsilon_by_step(global_step))
 
         # ── Cập nhật thanh progress sau mỗi episode ───────────────────────────
+        g_prob = guide_prob_by_step(global_step)
         pbar.set_postfix(
             ret=f"{ep_return:.0f}",
             best=f"{best_eval_return:.0f}",
             eps=f"{epsilon_by_step(global_step):.3f}",
+            guide=f"{g_prob:.2f}",
             loss=f"{recent_loss:.4f}",
             step=global_step,
         )
@@ -133,11 +153,14 @@ def train():
     print("Training complete.")
 
 
-def main():
-    log_setup()   # in device + config info
-    logger.info("Starting training | device=%s | episodes=%d", DEVICE, NUM_EPISODES)
+def main(resume_from: str = None):
+    log_setup()
+    if resume_from:
+        logger.info("Resuming training from %s", resume_from)
+    else:
+        logger.info("Starting training | device=%s | episodes=%d", DEVICE, NUM_EPISODES)
 
-    train()
+    train(resume_from=resume_from)
 
     # ── Plots sau khi train xong ──────────────────────────────────────────────
     os.makedirs("plots", exist_ok=True)

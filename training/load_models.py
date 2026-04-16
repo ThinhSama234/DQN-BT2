@@ -6,6 +6,7 @@ import torch
 import torch.optim as optim
 
 from config import Config, load_config
+from expectimax import ExpectiMaxGuide, guide_prob_by_step as _guide_prob_by_step
 from dqn_update import (
     DEVICE,
     make_legal_mask,
@@ -56,8 +57,16 @@ else:
     replay = ReplayBuffer(capacity=cfg.training.replay_capacity)
 
 # ── Wrapper functions (khớp với API train.py — 1 arg) ─────────────────────────
+# ── Guide ────────────────────────────────────────────────────────────────────
+guide = ExpectiMaxGuide(depth=cfg.guide.depth) if cfg.guide.enabled else None
+
+
 def epsilon_by_step(step: int) -> float:
     return _epsilon_by_step(step, cfg)
+
+
+def guide_prob_by_step(step: int) -> float:
+    return _guide_prob_by_step(step, cfg)
 
 
 def dqn_update(batch) -> float:

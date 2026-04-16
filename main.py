@@ -22,13 +22,12 @@ def cmd_train(args):
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "training"))
     from training.load_models import main as log_setup, cfg
 
-    # Override episodes nếu truyền từ CLI
     if args.episodes:
         cfg.training.num_episodes = args.episodes
 
     import training.train as train_module
     train_module.NUM_EPISODES = cfg.training.num_episodes
-    train_module.main()
+    train_module.main(resume_from=args.resume)
 
 
 def cmd_search(args):
@@ -98,6 +97,8 @@ Ví dụ:
     p_train = sub.add_parser("train", help="Train DQN agent")
     p_train.add_argument("--episodes", type=int, default=None,
                          help="Override số episode (mặc định: lấy từ config.yaml)")
+    p_train.add_argument("--resume", type=str, default=None, metavar="CHECKPOINT",
+                         help="Tiếp tục train từ checkpoint .pt")
 
     # search
     p_search = sub.add_parser("search", help="Hyperparameter grid/random search")

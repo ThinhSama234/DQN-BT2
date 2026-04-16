@@ -24,3 +24,9 @@ network:
 
 env:
   seed: 42
+
+guide:
+  enabled: true
+  depth: 1               # 1=nhanh (~120 node/move) | 2=tốt hơn (~4000 node/move)
+  decay_steps: 30000     # guide fades sau 30k steps (~600 ep đầu)
+  min_prob: 0.0          # tắt hoàn toàn sau decay
