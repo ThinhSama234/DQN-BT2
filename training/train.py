@@ -52,6 +52,13 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
 
     recent_loss = 0.0
 
+    # Cache 1 lần — tránh isinstance check trong hot loop
+    use_per  = isinstance(replay, PERNStepReplayBuffer)
+    use_guide = guide is not None
+
+    # Tạo eval_env một lần, reuse bằng reset() — tránh load pyspiel mỗi lần eval
+    eval_env = OpenSpiel2048Env(seed=9999)
+
     pbar = tqdm(range(start_episode, NUM_EPISODES + 1), desc="Training", dynamic_ncols=True)
     for episode in pbar:
         obs  = train_env.reset(seed=SEED + episode)
@@ -59,16 +66,18 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
         ep_return = 0.0
         ep_len    = 0
 
+        # Tính 1 lần/episode — eps và g_prob thay đổi rất ít trong 1 episode
+        eps    = epsilon_by_step(global_step)
+        g_prob = guide_prob_by_step(global_step) if use_guide else 0.0
+
         while not done and ep_len < MAX_STEPS_PER_EPISODE:
-            eps   = epsilon_by_step(global_step)
             legal = train_env.legal_actions()
             if not legal:
                 break
             legal_mask = make_legal_mask(num_actions, legal)
 
             # ExpectiMax guide trong giai đoạn đầu (cold start)
-            g_prob = guide_prob_by_step(global_step)
-            if guide is not None and random.random() < g_prob:
+            if use_guide and g_prob > 0.0 and random.random() < g_prob:
                 action = guide.best_action(train_env.state, legal)
             else:
                 action = masked_greedy_action(
@@ -89,7 +98,7 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
             global_step += 1
 
             if len(replay) >= LEARN_START and global_step % LEARN_EVERY == 0:
-                if isinstance(replay, PERNStepReplayBuffer):
+                if use_per:
                     beta  = per_beta_by_step(global_step)
                     batch, per_idx, is_w = replay.sample(BATCH_SIZE, beta)
                     recent_loss, td_err  = dqn_update(batch, is_weights=is_w)
@@ -98,23 +107,18 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
                     batch = replay.sample(BATCH_SIZE)
                     recent_loss, _  = dqn_update(batch)
                 loss_history.append(recent_loss)
-                logger.debug("step=%d  loss=%.4f", global_step, recent_loss)
 
             if global_step % TARGET_SYNC_EVERY == 0:
                 target_net.load_state_dict(q_net.state_dict())
-                logger.debug("Target net synced at step %d", global_step)
 
         episode_returns.append(ep_return)
         episode_lengths.append(ep_len)
-        logger.debug("ep=%d  return=%.1f  len=%d  eps=%.3f",
-                     episode, ep_return, ep_len, epsilon_by_step(global_step))
 
         # ── Cập nhật thanh progress sau mỗi episode ───────────────────────────
-        g_prob = guide_prob_by_step(global_step)
         pbar.set_postfix(
             ret=f"{ep_return:.0f}",
             best=f"{best_eval_return:.0f}",
-            eps=f"{epsilon_by_step(global_step):.3f}",
+            eps=f"{eps:.3f}",
             guide=f"{g_prob:.2f}",
             loss=f"{recent_loss:.4f}",
             lr=f"{scheduler.get_last_lr()[0]:.1e}",
@@ -131,10 +135,10 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
         scheduler.step()
 
         # ── Evaluation mỗi 20 episode ─────────────────────────────────────────
-        if episode % 20 == 0:
+        if episode % cfg.training.eval_every == 0:
+            q_net.eval()
             game_returns = []
             for g in range(cfg.training.eval_games):
-                eval_env   = OpenSpiel2048Env(seed=1000 + episode + g)
                 obs_eval   = eval_env.reset(seed=2000 + episode + g)
                 done_eval  = False
                 ret_g      = 0.0
@@ -158,11 +162,11 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
                 save_best(q_net, save_dir=output_dir)
                 logger.info("New best eval return=%.1f at ep=%d → best_model.pt saved", ret_eval, episode)
 
+            q_net.train()
             current_lr = scheduler.get_last_lr()[0]
-            current_guide = guide_prob_by_step(global_step)
             msg = (f"[Eval ep {episode:>5}] avg={ret_eval:.1f} ({cfg.training.eval_games}g)"
-                   f" | eps={epsilon_by_step(global_step):.3f}"
-                   f" | guide={current_guide:.2f}"
+                   f" | eps={eps:.3f}"
+                   f" | guide={g_prob:.2f}"
                    f" | lr={current_lr:.2e}"
                    f" | best={best_eval_return:.1f}")
             tqdm.write(msg)
