@@ -44,22 +44,27 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
         ckpt = torch.load(resume_from, map_location=DEVICE, weights_only=False)
         q_net.load_state_dict(ckpt["q_net_state_dict"])
         target_net.load_state_dict(ckpt["q_net_state_dict"])
+
         if ckpt.get("optimizer_state_dict") is not None:
             optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-        global_step   = ckpt.get("global_step", 0)
-        start_episode = ckpt.get("episode", 0) + 1
+
+        if ckpt.get("scheduler_state_dict") is not None:
+            scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+
+        global_step      = ckpt.get("global_step", 0)
+        start_episode    = ckpt.get("episode", 0) + 1
+        best_eval_return = ckpt.get("best_eval_return", float("-inf"))
 
         # Weights-only checkpoint (best_model.pt cũ): không có step info
         # → set global_step = decay_steps để epsilon bắt đầu ở mức tối thiểu
-        # thay vì 1.0 (sẽ phá hỏng weights tốt bằng random exploration)
         weights_only = ckpt.get("optimizer_state_dict") is None
         if weights_only and global_step == 0:
             global_step = cfg.epsilon.decay_steps
-            tqdm.write(f"Weights-only checkpoint: global_step set to {global_step} "
-                       f"→ eps={cfg.epsilon.end:.3f} (skip re-exploration)")
+            tqdm.write(f"Weights-only: global_step → {global_step} | eps={cfg.epsilon.end:.3f}")
         else:
-            tqdm.write(f"Resumed from checkpoint: ep={start_episode-1}, step={global_step}")
-        logger.info("Resumed from %s | ep=%d step=%d", resume_from, start_episode-1, global_step)
+            tqdm.write(f"Resumed ep={start_episode-1} | step={global_step} | best={best_eval_return:.1f}")
+        logger.info("Resumed from %s | ep=%d step=%d best=%.1f",
+                    resume_from, start_episode - 1, global_step, best_eval_return)
 
     recent_loss = 0.0
 
@@ -70,7 +75,9 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
     # Tạo eval_env một lần, reuse bằng reset() — tránh load pyspiel mỗi lần eval
     eval_env = OpenSpiel2048Env(seed=9999)
 
-    pbar = tqdm(range(start_episode, NUM_EPISODES + 1), desc="Training", dynamic_ncols=True)
+    pbar = tqdm(range(start_episode, NUM_EPISODES + 1),
+                desc=f"Train ep{start_episode}→{NUM_EPISODES}",
+                dynamic_ncols=True)
     for episode in pbar:
         obs  = train_env.reset(seed=SEED + episode)
         done = False
@@ -139,6 +146,8 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
         # ── Periodic save ─────────────────────────────────────────────────────
         if episode % SAVE_EVERY == 0:
             path = save_checkpoint(q_net, optimizer, episode, global_step, cfg,
+                                   scheduler=scheduler,
+                                   best_eval_return=best_eval_return,
                                    save_dir=output_dir)
             logger.info("Checkpoint saved → %s", path)
 
@@ -171,7 +180,10 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
             # Lưu best model
             if ret_eval > best_eval_return:
                 best_eval_return = ret_eval
-                save_best(q_net, optimizer, episode, global_step, cfg, save_dir=output_dir)
+                save_best(q_net, optimizer, episode, global_step, cfg,
+                          scheduler=scheduler,
+                          best_eval_return=best_eval_return,
+                          save_dir=output_dir)
                 logger.info("New best eval return=%.1f at ep=%d → best_model.pt saved", ret_eval, episode)
 
             q_net.train()
