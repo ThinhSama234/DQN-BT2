@@ -31,7 +31,7 @@ eval_returns    = []
 global_step = 0
 best_eval_return = float("-inf")
 
-SAVE_EVERY = 200   # lưu checkpoint định kỳ mỗi n episode
+SAVE_EVERY = cfg.training.save_every  # từ config.yaml
 
 
 def train(resume_from: str = None, output_dir: str = "checkpoints"):

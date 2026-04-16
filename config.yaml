@@ -12,6 +12,7 @@ training:
   use_double_dqn: true         # Double DQN + N-step
   n_steps: 3                   # best từ search
   loss: "huber"                # mse | huber | smooth_l1
+  save_every: 500              # lưu checkpoint mỗi n episode
 
 epsilon:
   start: 1.0                   # epsilon ban đầu (100% random)

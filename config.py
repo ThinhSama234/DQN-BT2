@@ -18,6 +18,7 @@ class TrainingConfig:
     use_double_dqn: bool
     n_steps: int
     loss: str
+    save_every: int = 500
 
 
 @dataclass
