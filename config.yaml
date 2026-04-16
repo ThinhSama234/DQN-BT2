@@ -1,22 +1,22 @@
 training:
   gamma: 0.99                  # discount factor
   grad_clip: 10.0              # max gradient L2 norm
-  batch_size: 128              # tốt nhất từ search
-  learning_rate: 5.0e-4        # tốt nhất từ narrow search (trial_001, eval=3328)
-  replay_capacity: 100000      # số transition tối đa trong ReplayBuffer
+  batch_size: 128              # best từ search
+  learning_rate: 3.0e-4        # best từ narrow search round 3 (trial_010, MeanEval=2920)
+  replay_capacity: 200000      # tăng cho train dài 20k ep
   learn_start: 1000            # bắt đầu train khi buffer có ít nhất n transition
   learn_every: 4               # update mỗi n bước
-  target_sync_every: 500       # số bước giữa mỗi lần sync target_net
-  num_episodes: 3000           # tổng số episode train (override bằng --episodes)
+  target_sync_every: 1000      # tăng lên cho ổn định khi train dài
+  num_episodes: 20000          # train thật (override bằng --episodes)
   max_steps_per_episode: 10000 # giới hạn bước mỗi episode
   use_double_dqn: true         # Double DQN + N-step
-  n_steps: 3                   # N-step return
+  n_steps: 3                   # best từ search
   loss: "huber"                # mse | huber | smooth_l1
 
 epsilon:
   start: 1.0                   # epsilon ban đầu (100% random)
   end: 0.05                    # epsilon tối thiểu
-  decay_steps: 150000          # scale cho 3000 ep (~50 steps/ep × 3000 = 150k)
+  decay_steps: 500000          # scale từ 50k (1500ep) → 500k (20k ep) theo tỉ lệ
 
 network:
   type: "dueling"              # vanilla | deep | dueling (CNN 18-channel)

@@ -157,7 +157,7 @@ env:
 
 ## Kết quả thực nghiệm
 
-### Broad search — 10 trials, 500 ep/trial
+### Round 1 — Broad search, 10 trials, 500 ep/trial
 
 | Rank | lr | γ | N | net | hid | eps_steps | MeanEval | BestEval |
 |------|----|---|---|-----|-----|-----------|----------|----------|
@@ -165,15 +165,70 @@ env:
 | 2 | 3e-4 | 0.99 | 5 | dueling | 256 | 100k | 2149.1 | 4500.0 |
 | 3 | 1e-4 | 0.95 | 1 | dueling | 256 | 50k | 2043.1 | 3694.7 |
 
-**Kết luận:** dueling > deep > vanilla, γ=0.99, hid=256, bs=128.
+**Kết luận round 1:** dueling > deep > vanilla, γ=0.99, hid=256, bs=128.
 
-### Net compare — 3 trials, 1500 ep/trial (cùng params)
+---
+
+### Round 2 — Net compare, 3 trials, 1500 ep/trial (cùng params)
 
 | net | MeanEval | BestEval |
 |-----|----------|----------|
 | dueling | 2391.0 | 4370.7 |
 | deep | 1955.0 | 4174.7 |
 | vanilla | 1817.4 | 4394.7 |
+
+**Kết luận round 2:** Dueling nhất quán tốt hơn. Confirmed.
+
+---
+
+### Round 3 — Narrow search, 10 trials, 1500 ep/trial
+
+Fix all: γ=0.99, net=dueling, hid=256, bs=128. Vary: lr × N × eps_steps.
+
+| Rank | lr | N | eps_steps | MeanEval | BestEval |
+|------|----|---|-----------|----------|----------|
+| 1 | **3e-4** | 3 | **50k** | **2920.9** | 4261.3 |
+| 2 | 1e-3 | 3 | 50k | 2720.0 | 5366.7 |
+| 3 | 5e-4 | 3 | 100k | 2706.8 | 4397.3 |
+| 4 | 1e-3 | 5 | 50k | 2661.2 | 4732.0 |
+| 5 | 3e-4 | 5 | 100k | 2415.1 | 4370.7 |
+| 6 | 5e-4 | 5 | 100k | 2205.7 | 4025.3 |
+| 7 | 1e-3 | 3 | 100k | 2074.0 | **5665.3** |
+| 8 | 3e-4 | 3 | 100k | 1838.8 | 3062.7 |
+| 9 | 5e-4 | 3 | 50k | 1640.6 | 3824.0 |
+| 10 | 1e-3 | 5 | 100k | 1593.5 | 3200.0 |
+
+#### Phân tích Round 3
+
+**Learning rate:**
+
+| lr | MeanEval trung bình (tất cả trials) |
+|----|-------------------------------------|
+| 3e-4 | (2920.9 + 2415.1 + 1838.8) / 3 = **2391** — ổn định nhất |
+| 1e-3 | (2720.0 + 2661.2 + 2074.0 + 1593.5) / 4 = 2262 — variance cao |
+| 5e-4 | (2706.8 + 2205.7 + 1640.6) / 3 = 2184 — yếu nhất |
+
+→ **lr=3e-4 ổn định nhất**, lr=1e-3 có thể đỉnh cao (BestEval=5665) nhưng không nhất quán.
+
+**N-step:**
+- N=3 avg: 2316 | N=5 avg: 2219 → **N=3 tốt hơn** cho 1500 ep.
+
+**eps_steps:**
+- eps_steps=50k avg: **2485** | eps_steps=100k avg: 2139
+- **eps_steps=50k thắng rõ** ở 1500 ep vì agent exploit sớm hơn trong budget giới hạn.
+
+**BestEval vs MeanEval:**
+- trial_007 (lr=1e-3, eps=100k): MeanEval=2074 nhưng BestEval=5665 → **variance cao, không ổn định**.
+- trial_010 (lr=3e-4, eps=50k): MeanEval=2920, BestEval=4261 → **ổn định, đáng tin hơn**.
+- Ưu tiên MeanEval cao khi chọn config cho train dài.
+
+#### Best config (từ narrow search)
+
+```
+lr = 3e-4   |  γ = 0.99  |  N = 3
+eps_steps = 50k (search)  →  scale lên 500k khi train 20k ep
+bs = 128    |  net = dueling  |  hid = 256
+```
 
 ---
 
