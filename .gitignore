@@ -1,2 +1,26 @@
+# Virtual environment
 .venv/
+venv/
+env/
+
+# Python cache
 __pycache__/
+*.py[cod]
+*.pyo
+
+# Training output
+checkpoints/
+logs/
+plots/
+grid_search_results/
+
+# Claude
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

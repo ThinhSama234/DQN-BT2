@@ -1,6 +1,12 @@
-cmake
+# System dependencies (cài trước pip):
+#   Windows : Visual Studio Build Tools + CMake (winget install Kitware.CMake)
+#   Ubuntu  : sudo apt-get install -y build-essential cmake python3-dev
+#   Colab   : !apt-get install -y build-essential cmake
+
 open-spiel
+torch
 matplotlib
 tqdm
-torch
 imageio
+pyyaml
+numpy
