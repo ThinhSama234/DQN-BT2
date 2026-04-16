@@ -56,39 +56,39 @@ class DuelingDQNNetwork(nn.Module):
     """
     Dueling DQN với CNN feature extractor cho bàn cờ 4×4.
 
+    Input obs: one-hot 288 floats (16 ô × 18 channel).
+    CNN xử lý đúng bằng cách reshape → (18, 4, 4) trước khi đưa vào Conv.
+
     Kiến trúc:
-        [board 4×4] ──CNN──┐
-                           ├── shared FC ──┬── Value head    → V(s)       (scalar)
-        [extra features] ──┘               └── Advantage head → A(s,a)   (num_actions)
-
-    Kết hợp: Q(s,a) = V(s) + (A(s,a) − mean_a A(s,.))
-    → Value stream học "trạng thái này tốt/xấu ra sao"
-    → Advantage stream học "action này tốt hơn/kém hơn trung bình bao nhiêu"
-
-    Lợi thế so với vanilla:
-    - Ổn định hơn khi nhiều action có Q-value gần nhau
-    - Học V(s) độc lập giúp generalize tốt hơn
+        obs (288,) → reshape (18, 4, 4) ──CNN──▶ shared FC ──┬── Value head    V(s)
+                                                              └── Advantage head A(s,a)
+    Kết hợp: Q(s,a) = V(s) + A(s,a) − mean_a A(s,.)
     """
 
-    _BOARD_ELEMS = 16  # 4×4 board = 16 phần tử đầu trong obs
+    # OpenSpiel 2048: 16 ô × 18 giá trị one-hot = 288
+    _ROWS     = 4
+    _COLS     = 4
+    _CHANNELS = 18   # log2 tile: 0=trống, 1=tile2, 2=tile4, ..., 17=tile131072
 
     def __init__(self, obs_dim: int, num_actions: int, hidden_dim: int = 256):
         super().__init__()
-        n_extra = max(0, obs_dim - self._BOARD_ELEMS)
 
-        # CNN: 1×4×4 → 16×5×5 → 32×4×4 → flatten(512)
+        # CNN: (B, 18, 4, 4) → feature vector
+        # padding=1 giữ nguyên spatial size 4×4 qua từng Conv
         self.cnn = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=2, stride=1, padding=1),  # → 16×5×5
+            nn.Conv2d(self._CHANNELS, 64, kernel_size=3, stride=1, padding=1),   # → (B, 64, 4, 4)
             nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=2, stride=1, padding=0), # → 32×4×4
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),              # → (B, 128, 4, 4)
             nn.ReLU(),
-            nn.Flatten(),                                           # → 512
+            nn.Conv2d(128, 128, kernel_size=1),                                  # → (B, 128, 4, 4)
+            nn.ReLU(),
+            nn.Flatten(),                                                         # → (B, 2048)
         )
-        _cnn_out = 32 * 4 * 4  # 512
+        _cnn_out = 128 * self._ROWS * self._COLS  # 2048
 
-        # Shared FC (CNN features + optional explicit features)
+        # Shared FC
         self.shared = nn.Sequential(
-            nn.Linear(_cnn_out + n_extra, hidden_dim), nn.ReLU(),
+            nn.Linear(_cnn_out, hidden_dim), nn.LayerNorm(hidden_dim), nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
         )
 
@@ -105,17 +105,14 @@ class DuelingDQNNetwork(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        board = x[:, :self._BOARD_ELEMS].view(-1, 1, 4, 4)
-        extra = x[:, self._BOARD_ELEMS:]
+        # (B, 288) → (B, 18, 4, 4): reshape theo row-major của OpenSpiel
+        board = x.view(-1, self._ROWS, self._COLS, self._CHANNELS) \
+                 .permute(0, 3, 1, 2).contiguous()
 
-        cnn_out = self.cnn(board)
-        combined = torch.cat([cnn_out, extra], dim=1) if extra.size(1) > 0 else cnn_out
+        shared    = self.shared(self.cnn(board))
+        value     = self.value_head(shared)      # (B, 1)
+        advantage = self.advantage_head(shared)  # (B, num_actions)
 
-        shared = self.shared(combined)
-        value     = self.value_head(shared)       # (B, 1)
-        advantage = self.advantage_head(shared)   # (B, num_actions)
-
-        # Q(s,a) = V(s) + A(s,a) − mean_a A(s,.)
         return value + (advantage - advantage.mean(dim=1, keepdim=True))
 
 

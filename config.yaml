@@ -1,26 +1,26 @@
 training:
-  gamma: 0.99              # discount factor
-  grad_clip: 10.0          # max gradient L2 norm
-  batch_size: 256          # số sample mỗi lần update
-  learning_rate: 1.0e-4    # learning rate cho Adam
-  replay_capacity: 100000  # số transition tối đa trong ReplayBuffer
-  learn_start: 1000        # bắt đầu train khi buffer có ít nhất n transition
-  learn_every: 4           # update mỗi n bước
-  target_sync_every: 500   # số bước giữa mỗi lần sync target_net
-  num_episodes: 2000       # tổng số episode train
-  max_steps_per_episode: 10000  # giới hạn bước mỗi episode
-  use_double_dqn: true     # True → Double DQN + N-step; False → vanilla DQN
-  n_steps: 3               # N-step return (chỉ dùng khi use_double_dqn=true)
-  loss: "huber"            # mse | huber | smooth_l1
+  gamma: 0.99                  # discount factor
+  grad_clip: 10.0              # max gradient L2 norm
+  batch_size: 128              # tốt nhất từ search
+  learning_rate: 5.0e-4        # tốt nhất từ narrow search (trial_001, eval=3328)
+  replay_capacity: 100000      # số transition tối đa trong ReplayBuffer
+  learn_start: 1000            # bắt đầu train khi buffer có ít nhất n transition
+  learn_every: 4               # update mỗi n bước
+  target_sync_every: 500       # số bước giữa mỗi lần sync target_net
+  num_episodes: 3000           # tổng số episode train (override bằng --episodes)
+  max_steps_per_episode: 10000 # giới hạn bước mỗi episode
+  use_double_dqn: true         # Double DQN + N-step
+  n_steps: 3                   # N-step return
+  loss: "huber"                # mse | huber | smooth_l1
 
 epsilon:
-  start: 1.0               # epsilon ban đầu (100% random)
-  end: 0.05                # epsilon tối thiểu
-  decay_steps: 100000      # số bước giảm tuyến tính từ start → end
+  start: 1.0                   # epsilon ban đầu (100% random)
+  end: 0.05                    # epsilon tối thiểu
+  decay_steps: 150000          # scale cho 3000 ep (~50 steps/ep × 3000 = 150k)
 
 network:
-  type: "dueling"          # vanilla | deep | dueling
-  hidden_dim: 256          # số neuron mỗi hidden layer
+  type: "dueling"              # vanilla | deep | dueling (CNN 18-channel)
+  hidden_dim: 256
 
 env:
   seed: 42
