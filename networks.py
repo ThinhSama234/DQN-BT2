@@ -65,24 +65,34 @@ class DuelingDQNNetwork(nn.Module):
     Kết hợp: Q(s,a) = V(s) + A(s,a) − mean_a A(s,.)
     """
 
-    # OpenSpiel 2048: 16 ô × 18 giá trị one-hot = 288
-    _ROWS     = 4
-    _COLS     = 4
-    _CHANNELS = 18   # log2 tile: 0=trống, 1=tile2, 2=tile4, ..., 17=tile131072
+    _ROWS = 4
+    _COLS = 4
+    # One-hot format: 16 ô × 18 channel = 288. Raw format: 16 floats.
+    _ONEHOT_CHANNELS = 18
+    _ONEHOT_DIM      = _ROWS * _COLS * _ONEHOT_CHANNELS  # 288
 
     def __init__(self, obs_dim: int, num_actions: int, hidden_dim: int = 256):
         super().__init__()
+        self.obs_dim = obs_dim
 
-        # CNN: (B, 18, 4, 4) → feature vector
-        # padding=1 giữ nguyên spatial size 4×4 qua từng Conv
+        # Tự động chọn số input channel dựa vào obs_dim
+        # obs_dim=288 → one-hot 18-channel | obs_dim=16 → raw 1-channel
+        if obs_dim == self._ONEHOT_DIM:
+            in_ch = self._ONEHOT_CHANNELS   # 18
+        else:
+            in_ch = 1                        # raw tile values
+
+        self._in_ch = in_ch
+
+        # CNN: (B, in_ch, 4, 4) → feature vector
         self.cnn = nn.Sequential(
-            nn.Conv2d(self._CHANNELS, 64, kernel_size=3, stride=1, padding=1),   # → (B, 64, 4, 4)
+            nn.Conv2d(in_ch, 64,  kernel_size=3, stride=1, padding=1),  # → (B, 64,  4, 4)
             nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),              # → (B, 128, 4, 4)
+            nn.Conv2d(64,  128,   kernel_size=3, stride=1, padding=1),  # → (B, 128, 4, 4)
             nn.ReLU(),
-            nn.Conv2d(128, 128, kernel_size=1),                                  # → (B, 128, 4, 4)
+            nn.Conv2d(128, 128,   kernel_size=1),                        # → (B, 128, 4, 4)
             nn.ReLU(),
-            nn.Flatten(),                                                         # → (B, 2048)
+            nn.Flatten(),                                                 # → (B, 2048)
         )
         _cnn_out = 128 * self._ROWS * self._COLS  # 2048
 
@@ -105,9 +115,13 @@ class DuelingDQNNetwork(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # (B, 288) → (B, 18, 4, 4): reshape theo row-major của OpenSpiel
-        board = x.view(-1, self._ROWS, self._COLS, self._CHANNELS) \
-                 .permute(0, 3, 1, 2).contiguous()
+        if self._in_ch == self._ONEHOT_CHANNELS:
+            # one-hot: (B, 288) → (B, 18, 4, 4)
+            board = x.view(-1, self._ROWS, self._COLS, self._ONEHOT_CHANNELS) \
+                     .permute(0, 3, 1, 2).contiguous()
+        else:
+            # raw: (B, 16) → (B, 1, 4, 4)
+            board = x.view(-1, 1, self._ROWS, self._COLS)
 
         shared    = self.shared(self.cnn(board))
         value     = self.value_head(shared)      # (B, 1)
