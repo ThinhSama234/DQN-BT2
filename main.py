@@ -25,6 +25,9 @@ def cmd_train(args):
     if args.episodes:
         cfg.training.num_episodes = args.episodes
 
+    if args.guide is not None:
+        cfg.guide.enabled = args.guide
+
     import training.train as train_module
     train_module.NUM_EPISODES = cfg.training.num_episodes
     train_module.main(resume_from=args.resume, output_dir=args.output_dir)
@@ -102,6 +105,8 @@ Ví dụ:
     p_train.add_argument("--output-dir", type=str, default="checkpoints", metavar="DIR",
                          help="Thư mục lưu checkpoint (mặc định: checkpoints/). "
                               "Dùng /drive/MyDrive/... trên Colab")
+    p_train.add_argument("--guide", action=argparse.BooleanOptionalAction, default=None,
+                         help="Bật/tắt ExpectiMax guide (mặc định: theo config.yaml)")
 
     # search
     p_search = sub.add_parser("search", help="Hyperparameter grid/random search")
