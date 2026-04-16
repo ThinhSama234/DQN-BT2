@@ -61,7 +61,7 @@ _OUT_DIR  = Path(os.path.dirname(__file__)) / ".." / "grid_search_results"
 @dataclass
 class SearchSpace:
     """
-    Định nghĩa không gian tìm kiếm.
+    Định nghĩa không gian tìm kiếm rộng (mặc định).
     Mỗi field là list các giá trị cần thử.
 
     Grid search  → thử tất cả combinations (tích Cartesian).
@@ -82,6 +82,39 @@ class SearchSpace:
     hidden_dim:   list = field(default_factory=lambda: [128, 256])
 
     # Epsilon decay
+    eps_decay_steps: list = field(default_factory=lambda: [50_000, 100_000])
+
+
+@dataclass
+class NarrowSearchSpace:
+    """
+    Không gian tìm kiếm thu hẹp — rút ra từ 10 trial đầu.
+
+    Kết luận từ kết quả:
+      - dueling > deep > vanilla (nhất quán)
+      - gamma=0.99 luôn tốt hơn 0.95
+      - hidden_dim=256 > 128
+      - batch_size=128 > 256
+      - N-step (n_steps=3,5) tốt hơn 1-step
+      - lr trong [3e-4, 1e-3] cho kết quả ổn định nhất
+
+    Dùng để fine-tune với nhiều episode hơn sau khi có kết quả broad search.
+    """
+    # Optimizer — thu hẹp vùng tốt
+    learning_rate: list = field(default_factory=lambda: [3e-4, 5e-4, 1e-3])
+
+    # Bellman — cố định gamma tốt nhất
+    gamma:   list = field(default_factory=lambda: [0.99])
+    n_steps: list = field(default_factory=lambda: [3, 5])
+
+    # Sampling — batch nhỏ hơn tốt hơn
+    batch_size: list = field(default_factory=lambda: [128])
+
+    # Network — dueling + hidden lớn
+    network_type: list = field(default_factory=lambda: ["dueling"])
+    hidden_dim:   list = field(default_factory=lambda: [256])
+
+    # Epsilon decay — thử dài hơn một chút
     eps_decay_steps: list = field(default_factory=lambda: [50_000, 100_000])
 
 
@@ -295,6 +328,7 @@ def run_search(
     num_episodes: int = 300,
     save_best: bool = True,
     seed: int = 0,
+    narrow: bool = False,
 ):
     """
     Chạy grid search hoặc random search.
@@ -305,9 +339,14 @@ def run_search(
         num_episodes: Số episode mỗi trial (nên ngắn hơn train thật, VD 200-500)
         save_best:    Lưu config tốt nhất ra best_config.yaml
         seed:         Seed cho random search
+        narrow:       True → dùng NarrowSearchSpace (thu hẹp từ kết quả broad search)
     """
     base_cfg = load_config(_CFG_PATH)
-    space    = SearchSpace()
+    if narrow:
+        space = NarrowSearchSpace()
+        print("  [Search space: NARROW — dueling/γ=0.99/hid=256/bs=128]")
+    else:
+        space = SearchSpace()
 
     if mode == "grid":
         combos = _all_combinations(space)
@@ -462,6 +501,8 @@ def main():
                         help="Seed cho random search (mặc định: 0)")
     parser.add_argument("--no-save",  action="store_true",
                         help="Không lưu best_config.yaml")
+    parser.add_argument("--narrow",   action="store_true",
+                        help="Dùng NarrowSearchSpace (thu hẹp từ kết quả broad search)")
     args = parser.parse_args()
 
     run_search(
@@ -470,6 +511,7 @@ def main():
         num_episodes=args.episodes,
         save_best=not args.no_save,
         seed=args.seed,
+        narrow=args.narrow,
     )
 
 

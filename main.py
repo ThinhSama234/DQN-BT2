@@ -39,6 +39,7 @@ def cmd_search(args):
         n_trials=args.trials,
         num_episodes=args.episodes or 300,
         seed=args.seed,
+        narrow=args.narrow,
     )
 
 
@@ -104,6 +105,8 @@ Ví dụ:
     p_search.add_argument("--trials",   type=int, default=20)
     p_search.add_argument("--episodes", type=int, default=300)
     p_search.add_argument("--seed",     type=int, default=0)
+    p_search.add_argument("--narrow",   action="store_true",
+                          help="Dùng không gian tìm kiếm thu hẹp (dueling/γ=0.99/hid=256/bs=128)")
 
     # inference
     p_infer = sub.add_parser("inference", help="Chạy model đã train")
