@@ -214,9 +214,10 @@ def _build_experiment(cfg: Config) -> dict:
 # Single trial
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _run_trial(exp: dict, num_episodes: int, eval_every: int = 25) -> dict:
+def _run_trial(exp: dict, num_episodes: int, eval_every: int = 25,
+               trial_label: str = "") -> dict:
     """
-    Chạy một trial training.
+    Chạy một trial training với progress bar tqdm bên trong.
 
     Returns:
         dict với các metrics: mean_eval_return, best_eval_return,
@@ -231,14 +232,23 @@ def _run_trial(exp: dict, num_episodes: int, eval_every: int = 25) -> dict:
 
     update_fn = double_dqn_update if cfg.training.use_double_dqn else dqn_update
 
-    num_actions = env.num_actions
-    global_step = 0
+    num_actions  = env.num_actions
+    global_step  = 0
+    recent_loss  = 0.0
+    best_eval    = 0.0
     ep_returns: list[float] = []
     eval_returns: list[float] = []
 
     t0 = time.time()
 
-    for episode in range(1, num_episodes + 1):
+    pbar = tqdm(
+        range(1, num_episodes + 1),
+        desc=trial_label,
+        dynamic_ncols=True,
+        leave=False,          # biến mất sau khi trial xong, không rác terminal
+    )
+
+    for episode in pbar:
         obs  = env.reset(seed=cfg.env.seed + episode)
         done = False
         ep_return = 0.0
@@ -271,7 +281,7 @@ def _run_trial(exp: dict, num_episodes: int, eval_every: int = 25) -> dict:
             if (len(replay) >= cfg.training.learn_start
                     and global_step % cfg.training.learn_every == 0):
                 batch = replay.sample(cfg.training.batch_size)
-                update_fn(batch, q_net, target_net, optimizer, cfg)
+                recent_loss = update_fn(batch, q_net, target_net, optimizer, cfg)
 
             if global_step % cfg.training.target_sync_every == 0:
                 target_net.load_state_dict(q_net.state_dict())
@@ -282,6 +292,15 @@ def _run_trial(exp: dict, num_episodes: int, eval_every: int = 25) -> dict:
         if episode % eval_every == 0:
             ret_eval = _greedy_eval(q_net, cfg, num_actions)
             eval_returns.append(ret_eval)
+            best_eval = max(best_eval, ret_eval)
+
+        # Cập nhật thanh progress
+        pbar.set_postfix(
+            ret=f"{ep_return:.0f}",
+            eval=f"{best_eval:.0f}",
+            eps=f"{epsilon_by_step(global_step, cfg):.3f}",
+            loss=f"{recent_loss:.4f}",
+        )
 
     wall_time = time.time() - t0
     last_n = ep_returns[-min(50, len(ep_returns)):]
@@ -362,15 +381,16 @@ def run_search(
 
     for i, params in enumerate(combos):
         trial_id = f"trial_{i+1:03d}"
-        print(f"[{i+1}/{len(combos)}] {trial_id}  params={_fmt_params(params)}", end="  ", flush=True)
+        label = f"[{i+1}/{len(combos)}] {trial_id}"
+        tqdm.write(f"\n{label}  {_fmt_params(params)}")
 
         cfg = _apply_overrides(base_cfg, params)
         exp = _build_experiment(cfg)
 
         try:
-            metrics = _run_trial(exp, num_episodes=num_episodes)
+            metrics = _run_trial(exp, num_episodes=num_episodes, trial_label=label)
         except Exception as e:
-            print(f"  ERROR: {e}")
+            tqdm.write(f"  ERROR: {e}")
             metrics = {"mean_eval_return": float("-inf"), "error": str(e)}
 
         record = {
@@ -380,9 +400,11 @@ def run_search(
         }
         all_results.append(record)
 
-        print(f"eval={metrics.get('mean_eval_return', 0):.1f}"
-              f"  best={metrics.get('best_eval_return', 0):.1f}"
-              f"  time={metrics.get('wall_time_s', 0):.0f}s")
+        tqdm.write(
+            f"  → eval={metrics.get('mean_eval_return', 0):.1f}"
+            f"  best={metrics.get('best_eval_return', 0):.1f}"
+            f"  time={metrics.get('wall_time_s', 0):.0f}s"
+        )
 
         # Lưu kết quả sau mỗi trial (để không mất kết quả nếu crash)
         _save_results(all_results)
