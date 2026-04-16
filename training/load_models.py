@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import torch
 import torch.optim as optim
+from torch.optim.lr_scheduler import StepLR
 
 from config import Config, load_config
 from expectimax import ExpectiMaxGuide, guide_prob_by_step as _guide_prob_by_step
@@ -43,8 +44,13 @@ target_net = build_network(cfg, obs_dim, num_actions).to(DEVICE)
 target_net.load_state_dict(q_net.state_dict())
 target_net.eval()
 
-# ── Optimizer ─────────────────────────────────────────────────────────────────
+# ── Optimizer + LR Scheduler ──────────────────────────────────────────────────
 optimizer = optim.Adam(q_net.parameters(), lr=cfg.training.learning_rate)
+scheduler = StepLR(
+    optimizer,
+    step_size=cfg.training.lr_decay_every,
+    gamma=cfg.training.lr_decay_factor,
+)
 
 # ── Replay buffer (loại phụ thuộc vào use_double_dqn) ────────────────────────
 if cfg.training.use_double_dqn:

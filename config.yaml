@@ -13,6 +13,9 @@ training:
   n_steps: 3                   # best từ search
   loss: "huber"                # mse | huber | smooth_l1
   save_every: 500              # lưu checkpoint mỗi n episode
+  eval_games: 5                # trung bình n game khi eval (giảm noise từ lucky seed)
+  lr_decay_every: 3000         # decay LR mỗi n episode
+  lr_decay_factor: 0.5         # 3e-4 → 1.5e-4 (ep3000) → 7.5e-5 (ep6000) → ...
 
 epsilon:
   start: 1.0                   # epsilon ban đầu (100% random)

@@ -19,6 +19,9 @@ class TrainingConfig:
     n_steps: int
     loss: str
     save_every: int = 500
+    eval_games: int = 5           # số game để trung bình khi eval
+    lr_decay_every: int = 3000    # decay LR mỗi n episode
+    lr_decay_factor: float = 0.5  # nhân LR với factor này
 
 
 @dataclass

@@ -6,7 +6,7 @@ import random
 import torch
 
 from training.load_models import (
-    cfg, train_env, q_net, target_net, optimizer, replay,
+    cfg, train_env, q_net, target_net, optimizer, scheduler, replay,
     obs_dim, num_actions, DEVICE,
     SEED, NUM_EPISODES, MAX_STEPS_PER_EPISODE,
     LEARN_START, LEARN_EVERY, BATCH_SIZE, TARGET_SYNC_EVERY,
@@ -110,6 +110,7 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
             eps=f"{epsilon_by_step(global_step):.3f}",
             guide=f"{g_prob:.2f}",
             loss=f"{recent_loss:.4f}",
+            lr=f"{scheduler.get_last_lr()[0]:.1e}",
             step=global_step,
         )
 
@@ -119,23 +120,29 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
                                    save_dir=output_dir)
             logger.info("Checkpoint saved → %s", path)
 
+        # ── LR scheduler step mỗi episode ────────────────────────────────────
+        scheduler.step()
+
         # ── Evaluation mỗi 20 episode ─────────────────────────────────────────
         if episode % 20 == 0:
-            eval_env  = OpenSpiel2048Env(seed=1000 + episode)
-            obs_eval  = eval_env.reset(seed=2000 + episode)
-            done_eval = False
-            ret_eval  = 0.0
-            steps_eval = 0
+            game_returns = []
+            for g in range(cfg.training.eval_games):
+                eval_env   = OpenSpiel2048Env(seed=1000 + episode + g)
+                obs_eval   = eval_env.reset(seed=2000 + episode + g)
+                done_eval  = False
+                ret_g      = 0.0
+                steps_eval = 0
+                while not done_eval and steps_eval < MAX_STEPS_PER_EPISODE:
+                    legal = eval_env.legal_actions()
+                    if not legal:
+                        break
+                    action = masked_greedy_action(q_net, obs_eval, legal, num_actions, epsilon=0.0, device=DEVICE)
+                    obs_eval, reward, done_eval, _ = eval_env.step(action)
+                    ret_g      += reward
+                    steps_eval += 1
+                game_returns.append(ret_g)
 
-            while not done_eval and steps_eval < MAX_STEPS_PER_EPISODE:
-                legal  = eval_env.legal_actions()
-                if not legal:
-                    break
-                action = masked_greedy_action(q_net, obs_eval, legal, num_actions, epsilon=0.0, device=DEVICE)
-                obs_eval, reward, done_eval, _ = eval_env.step(action)
-                ret_eval   += reward
-                steps_eval += 1
-
+            ret_eval = sum(game_returns) / len(game_returns)
             eval_returns.append((episode, ret_eval))
 
             # Lưu best model
@@ -144,8 +151,10 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
                 save_best(q_net, save_dir=output_dir)
                 logger.info("New best eval return=%.1f at ep=%d → best_model.pt saved", ret_eval, episode)
 
-            msg = (f"[Eval ep {episode:>5}] return={ret_eval:.1f}"
+            current_lr = scheduler.get_last_lr()[0]
+            msg = (f"[Eval ep {episode:>5}] avg={ret_eval:.1f} ({cfg.training.eval_games}g)"
                    f" | eps={epsilon_by_step(global_step):.3f}"
+                   f" | lr={current_lr:.2e}"
                    f" | best={best_eval_return:.1f}")
             tqdm.write(msg)
             logger.info(msg)
