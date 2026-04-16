@@ -62,12 +62,14 @@ def parse_board_numbers(state):
     return None
 
 
-# Quick sanity check
-test_state = game.new_initial_state()
-auto_resolve_chance_nodes(test_state, np.random.default_rng(0))
-print("Observation shape after resolving initial chance:", extract_obs(test_state).shape)
-print("Legal actions:", legal_actions(test_state))
-print("Board (best effort):")
-print(parse_board_numbers(test_state))
-print()
-print(test_state)
+if __name__ == "__main__":
+    import pyspiel
+    game = pyspiel.load_game("2048")
+    test_state = game.new_initial_state()
+    auto_resolve_chance_nodes(test_state, np.random.default_rng(0))
+    print("Observation shape after resolving initial chance:", extract_obs(test_state).shape)
+    print("Legal actions:", legal_actions(test_state))
+    print("Board (best effort):")
+    print(parse_board_numbers(test_state))
+    print()
+    print(test_state)
