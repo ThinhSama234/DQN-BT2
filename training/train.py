@@ -44,10 +44,12 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
         ckpt = torch.load(resume_from, map_location=DEVICE, weights_only=False)
         q_net.load_state_dict(ckpt["q_net_state_dict"])
         target_net.load_state_dict(ckpt["q_net_state_dict"])
-        optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+        if ckpt.get("optimizer_state_dict") is not None:
+            optimizer.load_state_dict(ckpt["optimizer_state_dict"])
         global_step   = ckpt.get("global_step", 0)
         start_episode = ckpt.get("episode", 0) + 1
-        tqdm.write(f"Resumed from checkpoint: ep={start_episode-1}, step={global_step}")
+        tqdm.write(f"Resumed from checkpoint: ep={start_episode-1}, step={global_step}"
+                   + (" (weights only — optimizer reset)" if ckpt.get("optimizer_state_dict") is None else ""))
         logger.info("Resumed from %s | ep=%d step=%d", resume_from, start_episode-1, global_step)
 
     recent_loss = 0.0
