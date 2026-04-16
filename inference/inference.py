@@ -78,12 +78,12 @@ def run_inference(checkpoint_path: str, n_episodes: int = 10, render: bool = Fal
     obs_dim     = env.obs_dim
     num_actions = env.num_actions
 
-    # Load model
+    # Load model — network type is read from saved cfg (checkpoint) or current cfg (best)
     if os.path.isdir(checkpoint_path):
-        q_net = load_best(checkpoint_path, obs_dim, num_actions, cfg.network.hidden_dim)
+        q_net = load_best(checkpoint_path, obs_dim, num_actions, cfg)
         print(f"Loaded best_model from {checkpoint_path}/")
     else:
-        q_net, meta = load_checkpoint(checkpoint_path, obs_dim, num_actions, cfg.network.hidden_dim)
+        q_net, meta = load_checkpoint(checkpoint_path, obs_dim, num_actions)
         print(f"Loaded checkpoint: episode={meta['episode']}, step={meta['global_step']}")
 
     print(f"Device: {DEVICE}")

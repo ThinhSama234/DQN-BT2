@@ -42,6 +42,8 @@ def train():
         while not done and ep_len < MAX_STEPS_PER_EPISODE:
             eps   = epsilon_by_step(global_step)
             legal = train_env.legal_actions()
+            if not legal:
+                break
             legal_mask = make_legal_mask(num_actions, legal)
 
             action = masked_greedy_action(
