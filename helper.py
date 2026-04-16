@@ -1,3 +1,6 @@
+import re
+import numpy as np
+
 
 def extract_obs(state, player_id=0):
     """Return a flat float32 observation vector for the player."""
