@@ -48,8 +48,17 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
             optimizer.load_state_dict(ckpt["optimizer_state_dict"])
         global_step   = ckpt.get("global_step", 0)
         start_episode = ckpt.get("episode", 0) + 1
-        tqdm.write(f"Resumed from checkpoint: ep={start_episode-1}, step={global_step}"
-                   + (" (weights only — optimizer reset)" if ckpt.get("optimizer_state_dict") is None else ""))
+
+        # Weights-only checkpoint (best_model.pt cũ): không có step info
+        # → set global_step = decay_steps để epsilon bắt đầu ở mức tối thiểu
+        # thay vì 1.0 (sẽ phá hỏng weights tốt bằng random exploration)
+        weights_only = ckpt.get("optimizer_state_dict") is None
+        if weights_only and global_step == 0:
+            global_step = cfg.epsilon.decay_steps
+            tqdm.write(f"Weights-only checkpoint: global_step set to {global_step} "
+                       f"→ eps={cfg.epsilon.end:.3f} (skip re-exploration)")
+        else:
+            tqdm.write(f"Resumed from checkpoint: ep={start_episode-1}, step={global_step}")
         logger.info("Resumed from %s | ep=%d step=%d", resume_from, start_episode-1, global_step)
 
     recent_loss = 0.0
@@ -133,8 +142,9 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
                                    save_dir=output_dir)
             logger.info("Checkpoint saved → %s", path)
 
-        # ── LR scheduler step mỗi episode ────────────────────────────────────
-        scheduler.step()
+        # ── LR scheduler step mỗi episode (chỉ sau khi optimizer đã chạy) ───
+        if len(replay) >= LEARN_START:
+            scheduler.step()
 
         # ── Evaluation mỗi 20 episode ─────────────────────────────────────────
         if episode % cfg.training.eval_every == 0:
