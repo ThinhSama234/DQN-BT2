@@ -10,10 +10,11 @@ from training.load_models import (
     obs_dim, num_actions, DEVICE,
     SEED, NUM_EPISODES, MAX_STEPS_PER_EPISODE,
     LEARN_START, LEARN_EVERY, BATCH_SIZE, TARGET_SYNC_EVERY,
-    epsilon_by_step, guide_prob_by_step, dqn_update,
+    epsilon_by_step, guide_prob_by_step, dqn_update, per_beta_by_step,
     make_legal_mask, masked_greedy_action, guide,
     main as log_setup,
 )
+from replay_buffer import PERNStepReplayBuffer
 from environment_game import OpenSpiel2048Env
 from configs.loggings import get_logger
 from models.save_model import save_checkpoint, save_best
@@ -88,8 +89,14 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
             global_step += 1
 
             if len(replay) >= LEARN_START and global_step % LEARN_EVERY == 0:
-                batch = replay.sample(BATCH_SIZE)
-                recent_loss = dqn_update(batch)
+                if isinstance(replay, PERNStepReplayBuffer):
+                    beta  = per_beta_by_step(global_step)
+                    batch, per_idx, is_w = replay.sample(BATCH_SIZE, beta)
+                    recent_loss, td_err  = dqn_update(batch, is_weights=is_w)
+                    replay.update_priorities(per_idx, td_err)
+                else:
+                    batch = replay.sample(BATCH_SIZE)
+                    recent_loss, _  = dqn_update(batch)
                 loss_history.append(recent_loss)
                 logger.debug("step=%d  loss=%.4f", global_step, recent_loss)
 
@@ -152,8 +159,10 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
                 logger.info("New best eval return=%.1f at ep=%d → best_model.pt saved", ret_eval, episode)
 
             current_lr = scheduler.get_last_lr()[0]
+            current_guide = guide_prob_by_step(global_step)
             msg = (f"[Eval ep {episode:>5}] avg={ret_eval:.1f} ({cfg.training.eval_games}g)"
                    f" | eps={epsilon_by_step(global_step):.3f}"
+                   f" | guide={current_guide:.2f}"
                    f" | lr={current_lr:.2e}"
                    f" | best={best_eval_return:.1f}")
             tqdm.write(msg)

@@ -43,6 +43,23 @@ class EnvConfig:
 
 
 @dataclass
+class RewardShapingConfig:
+    enabled:             bool  = False
+    empty_cells_weight:  float = 10.0   # bonus mỗi ô trống
+    corner_weight:       float = 50.0   # bonus khi max tile ở góc
+    monotonicity_weight: float = 5.0    # bonus board đơn điệu
+
+
+@dataclass
+class PERConfig:
+    enabled:    bool  = False
+    alpha:      float = 0.6   # mức độ ưu tiên (0=uniform, 1=full priority)
+    beta_start: float = 0.4   # IS weight ban đầu (anneals → 1.0)
+    beta_end:   float = 1.0
+    eps:        float = 1e-6  # tránh priority = 0
+
+
+@dataclass
 class GuideConfig:
     enabled:     bool  = False
     depth:       int   = 1        # depth=1 nhanh, depth=2 tốt hơn nhưng chậm hơn
@@ -52,11 +69,13 @@ class GuideConfig:
 
 @dataclass
 class Config:
-    training: TrainingConfig
-    epsilon:  EpsilonConfig
-    network:  NetworkConfig
-    env:      EnvConfig
-    guide:    GuideConfig = None  # optional — backward compat với config cũ
+    training:        TrainingConfig
+    epsilon:         EpsilonConfig
+    network:         NetworkConfig
+    env:             EnvConfig
+    guide:           GuideConfig           = None
+    reward_shaping:  RewardShapingConfig   = None
+    per:             PERConfig             = None
 
 
 def load_config(path: str = "config.yaml") -> Config:
@@ -72,10 +91,29 @@ def load_config(path: str = "config.yaml") -> Config:
         min_prob=guide_raw.get("min_prob", 0.0),
     )
 
+    rs_raw = raw.get("reward_shaping", {})
+    reward_shaping = RewardShapingConfig(
+        enabled=rs_raw.get("enabled", False),
+        empty_cells_weight=rs_raw.get("empty_cells_weight", 10.0),
+        corner_weight=rs_raw.get("corner_weight", 50.0),
+        monotonicity_weight=rs_raw.get("monotonicity_weight", 5.0),
+    )
+
+    per_raw = raw.get("per", {})
+    per = PERConfig(
+        enabled=per_raw.get("enabled", False),
+        alpha=per_raw.get("alpha", 0.6),
+        beta_start=per_raw.get("beta_start", 0.4),
+        beta_end=per_raw.get("beta_end", 1.0),
+        eps=per_raw.get("eps", 1e-6),
+    )
+
     return Config(
         training=TrainingConfig(**raw["training"]),
         epsilon=EpsilonConfig(**raw["epsilon"]),
         network=NetworkConfig(**raw["network"]),
         env=EnvConfig(**raw["env"]),
         guide=guide,
+        reward_shaping=reward_shaping,
+        per=per,
     )

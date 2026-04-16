@@ -157,13 +157,23 @@ def dqn_update(
 # Double DQN update (N-step return)
 # ─────────────────────────────────────────────────────────────────────────────
 
+def per_beta_by_step(step: int, cfg: Config) -> float:
+    """Anneal PER beta từ beta_start → beta_end trong suốt quá trình train."""
+    if not cfg.per or not cfg.per.enabled:
+        return 0.4
+    total = cfg.training.num_episodes * cfg.training.max_steps_per_episode
+    frac  = min(1.0, step / max(1, total))
+    return cfg.per.beta_start + frac * (cfg.per.beta_end - cfg.per.beta_start)
+
+
 def double_dqn_update(
     batch: NStepTransition,
     q_net: nn.Module,
     target_net: nn.Module,
     optimizer: torch.optim.Optimizer,
     cfg: Config,
-) -> float:
+    is_weights: np.ndarray = None,
+) -> tuple:
     """
     Double DQN + N-step return update.
 
@@ -208,7 +218,17 @@ def double_dqn_update(
         # N-step Bellman target
         target = n_rewards + (cfg.training.gamma ** cfg.training.n_steps) * n_step_max_q
 
-    loss = compute_loss(q_sa, target, cfg.training.loss)
+    # TD errors cho PER priority update (tính trước khi backward)
+    with torch.no_grad():
+        td_errors = (q_sa - target).abs().cpu().numpy()
+
+    if is_weights is not None:
+        # PER: weighted element-wise loss
+        w = torch.tensor(is_weights, dtype=torch.float32, device=DEVICE)
+        raw_loss = nn.functional.smooth_l1_loss(q_sa, target, reduction="none")
+        loss = (w * raw_loss).mean()
+    else:
+        loss = compute_loss(q_sa, target, cfg.training.loss)
 
     optimizer.zero_grad()
     loss.backward()
@@ -216,4 +236,4 @@ def double_dqn_update(
     optimizer.step()
 
     _log_update_stats("double_dqn", q_sa, target, loss, float(grad_norm))
-    return float(loss.item())
+    return float(loss.item()), td_errors

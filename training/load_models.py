@@ -15,10 +15,11 @@ from dqn_update import (
     epsilon_by_step as _epsilon_by_step,
     dqn_update as _dqn_update,
     double_dqn_update as _double_dqn_update,
+    per_beta_by_step as _per_beta_by_step,
 )
 from networks import build_network
 from environment_game import OpenSpiel2048Env
-from replay_buffer import ReplayBuffer, NStepReplayBuffer
+from replay_buffer import ReplayBuffer, NStepReplayBuffer, PERNStepReplayBuffer
 
 # ── Load config ──────────────────────────────────────────────────────────────
 _cfg_path = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
@@ -33,8 +34,9 @@ LEARN_EVERY           = cfg.training.learn_every
 BATCH_SIZE            = cfg.training.batch_size
 TARGET_SYNC_EVERY     = cfg.training.target_sync_every
 
-# ── Environment ───────────────────────────────────────────────────────────────
-train_env = OpenSpiel2048Env(seed=SEED)
+# ── Environment (reward shaping optional) ─────────────────────────────────────
+_shaping = cfg.reward_shaping if (cfg.reward_shaping and cfg.reward_shaping.enabled) else None
+train_env = OpenSpiel2048Env(seed=SEED, reward_shaping_cfg=_shaping)
 obs_dim     = train_env.obs_dim
 num_actions = train_env.num_actions
 
@@ -52,13 +54,22 @@ scheduler = StepLR(
     gamma=cfg.training.lr_decay_factor,
 )
 
-# ── Replay buffer (loại phụ thuộc vào use_double_dqn) ────────────────────────
+# ── Replay buffer ─────────────────────────────────────────────────────────────
 if cfg.training.use_double_dqn:
-    replay = NStepReplayBuffer(
-        capacity=cfg.training.replay_capacity,
-        n_steps=cfg.training.n_steps,
-        gamma=cfg.training.gamma,
-    )
+    if cfg.per and cfg.per.enabled:
+        replay = PERNStepReplayBuffer(
+            capacity=cfg.training.replay_capacity,
+            n_steps=cfg.training.n_steps,
+            gamma=cfg.training.gamma,
+            alpha=cfg.per.alpha,
+            per_eps=cfg.per.eps,
+        )
+    else:
+        replay = NStepReplayBuffer(
+            capacity=cfg.training.replay_capacity,
+            n_steps=cfg.training.n_steps,
+            gamma=cfg.training.gamma,
+        )
 else:
     replay = ReplayBuffer(capacity=cfg.training.replay_capacity)
 
@@ -75,11 +86,17 @@ def guide_prob_by_step(step: int) -> float:
     return _guide_prob_by_step(step, cfg)
 
 
-def dqn_update(batch) -> float:
-    """Tự động chọn vanilla hay double DQN dựa vào config."""
+def dqn_update(batch, is_weights=None):
+    """Tự động chọn vanilla hay double DQN. Trả về (loss, td_errors)."""
     if cfg.training.use_double_dqn:
-        return _double_dqn_update(batch, q_net, target_net, optimizer, cfg)
-    return _dqn_update(batch, q_net, target_net, optimizer, cfg)
+        return _double_dqn_update(batch, q_net, target_net, optimizer, cfg,
+                                  is_weights=is_weights)
+    loss = _dqn_update(batch, q_net, target_net, optimizer, cfg)
+    return loss, None
+
+
+def per_beta_by_step(step: int) -> float:
+    return _per_beta_by_step(step, cfg)
 
 
 def main():

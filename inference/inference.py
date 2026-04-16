@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import argparse
 import numpy as np
 import torch
+from expectimax import ExpectiMaxGuide
 
 from config import load_config
 from networks import DQNNetwork
@@ -98,6 +99,51 @@ def run_inference(checkpoint_path: str, n_episodes: int = 10, render: bool = Fal
     returns   = [r["return"]   for r in results]
     max_tiles = [r["max_tile"] for r in results]
 
+    print("\n── Summary ────────────────────────────────")
+    print(f"  Return   : mean={np.mean(returns):.1f}  max={np.max(returns):.1f}  min={np.min(returns):.1f}")
+    print(f"  Max tile : mean={np.mean(max_tiles):.0f}  best={np.max(max_tiles)}")
+    print("───────────────────────────────────────────")
+
+
+def run_expectimax(n_episodes: int = 10, depth: int = 1, render: bool = False, seed: int = 42):
+    """Chạy thuần ExpectiMax (không dùng DQN), in thống kê."""
+    guide = ExpectiMaxGuide(depth=depth)
+    env   = OpenSpiel2048Env(seed=seed)
+
+    print(f"ExpectiMax depth={depth} | {n_episodes} episodes\n")
+
+    results = []
+    for i in range(n_episodes):
+        obs  = env.reset(seed=seed + i)
+        done = False
+        total_return = 0.0
+        steps = 0
+
+        while not done and steps < 10_000:
+            legal = env.legal_actions()
+            if not legal:
+                break
+            action = guide.best_action(env.state, legal)
+            obs, reward, done, _ = env.step(action)
+            total_return += reward
+            steps += 1
+
+            if render:
+                board = parse_board_numbers(env.state)
+                if board is not None:
+                    print(board)
+                    print(f"  reward={reward:.0f}  total={total_return:.0f}\n")
+
+        max_tile = 0
+        board = parse_board_numbers(env.state)
+        if board is not None:
+            max_tile = int(board.max())
+
+        results.append({"return": total_return, "steps": steps, "max_tile": max_tile})
+        print(f"  Episode {i+1:3d} | return={total_return:8.1f} | steps={steps:5d} | max_tile={max_tile}")
+
+    returns   = [r["return"]   for r in results]
+    max_tiles = [r["max_tile"] for r in results]
     print("\n── Summary ────────────────────────────────")
     print(f"  Return   : mean={np.mean(returns):.1f}  max={np.max(returns):.1f}  min={np.min(returns):.1f}")
     print(f"  Max tile : mean={np.mean(max_tiles):.0f}  best={np.max(max_tiles)}")

@@ -29,6 +29,19 @@ network:
 env:
   seed: 42
 
+reward_shaping:
+  enabled: false             # bật để thêm bonus empty/corner/monotonicity
+  empty_cells_weight: 10.0   # +10 mỗi ô trống
+  corner_weight: 50.0        # +50*log2(max_tile) khi max tile ở góc
+  monotonicity_weight: 5.0   # +5 * monotonicity score
+
+per:
+  enabled: false             # Prioritized Experience Replay
+  alpha: 0.6                 # mức ưu tiên (0=uniform, 1=full TD-error priority)
+  beta_start: 0.4            # IS correction ban đầu
+  beta_end: 1.0              # IS correction cuối (anneal về 1.0)
+  eps: 1.0e-6                # tránh priority = 0
+
 guide:
   enabled: true
   depth: 1               # 1=nhanh (~120 node/move) | 2=tốt hơn (~4000 node/move)

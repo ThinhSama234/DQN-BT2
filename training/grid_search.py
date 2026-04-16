@@ -48,7 +48,8 @@ from dqn_update import (
 )
 from environment_game import OpenSpiel2048Env
 from networks import build_network
-from replay_buffer import ReplayBuffer, NStepReplayBuffer
+from replay_buffer import ReplayBuffer, NStepReplayBuffer, PERNStepReplayBuffer
+from dqn_update import per_beta_by_step
 
 _CFG_PATH = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
 _OUT_DIR  = Path(os.path.dirname(__file__)) / ".." / "grid_search_results"
@@ -129,6 +130,43 @@ class NetCompareSpace:
     eps_decay_steps: list = field(default_factory=lambda: [100_000])
 
 
+@dataclass
+class PERSearchSpace:
+    """
+    Tìm kiếm hyperparameter PER — fix các param tốt nhất, vary PER settings.
+    So sánh PER vs không PER, và ảnh hưởng của alpha/beta.
+    """
+    learning_rate:   list = field(default_factory=lambda: [3e-4])
+    gamma:           list = field(default_factory=lambda: [0.99])
+    n_steps:         list = field(default_factory=lambda: [3])
+    batch_size:      list = field(default_factory=lambda: [128])
+    network_type:    list = field(default_factory=lambda: ["dueling"])
+    hidden_dim:      list = field(default_factory=lambda: [256])
+    eps_decay_steps: list = field(default_factory=lambda: [500_000])
+    per_enabled:     list = field(default_factory=lambda: [True, False])
+    per_alpha:       list = field(default_factory=lambda: [0.4, 0.6, 0.8])
+    per_beta_start:  list = field(default_factory=lambda: [0.3, 0.4, 0.6])
+
+
+@dataclass
+class RewardSearchSpace:
+    """
+    Tìm kiếm trọng số Reward Shaping — fix param tốt nhất, vary reward weights.
+    So sánh shaping vs không shaping, và ảnh hưởng của từng bonus.
+    """
+    learning_rate:          list = field(default_factory=lambda: [3e-4])
+    gamma:                  list = field(default_factory=lambda: [0.99])
+    n_steps:                list = field(default_factory=lambda: [3])
+    batch_size:             list = field(default_factory=lambda: [128])
+    network_type:           list = field(default_factory=lambda: ["dueling"])
+    hidden_dim:             list = field(default_factory=lambda: [256])
+    eps_decay_steps:        list = field(default_factory=lambda: [500_000])
+    reward_shaping_enabled: list = field(default_factory=lambda: [True, False])
+    empty_cells_weight:     list = field(default_factory=lambda: [0.0, 5.0, 10.0, 20.0])
+    corner_weight:          list = field(default_factory=lambda: [0.0, 30.0, 50.0])
+    monotonicity_weight:    list = field(default_factory=lambda: [0.0, 5.0, 10.0])
+
+
 def _all_combinations(space: SearchSpace) -> list[dict]:
     """Tích Cartesian toàn bộ search space."""
     keys = [f.name for f in space.__dataclass_fields__.values()]
@@ -169,13 +207,20 @@ def _apply_overrides(base_cfg: Config, params: dict) -> Config:
     cfg = copy.deepcopy(base_cfg)
 
     mapping = {
-        "learning_rate":  ("training", "learning_rate"),
-        "gamma":          ("training", "gamma"),
-        "n_steps":        ("training", "n_steps"),
-        "batch_size":     ("training", "batch_size"),
-        "network_type":   ("network",  "type"),
-        "hidden_dim":     ("network",  "hidden_dim"),
-        "eps_decay_steps":("epsilon",  "decay_steps"),
+        "learning_rate":          ("training",       "learning_rate"),
+        "gamma":                  ("training",       "gamma"),
+        "n_steps":                ("training",       "n_steps"),
+        "batch_size":             ("training",       "batch_size"),
+        "network_type":           ("network",        "type"),
+        "hidden_dim":             ("network",        "hidden_dim"),
+        "eps_decay_steps":        ("epsilon",        "decay_steps"),
+        "per_enabled":            ("per",            "enabled"),
+        "per_alpha":              ("per",            "alpha"),
+        "per_beta_start":         ("per",            "beta_start"),
+        "reward_shaping_enabled": ("reward_shaping", "enabled"),
+        "empty_cells_weight":     ("reward_shaping", "empty_cells_weight"),
+        "corner_weight":          ("reward_shaping", "corner_weight"),
+        "monotonicity_weight":    ("reward_shaping", "monotonicity_weight"),
     }
 
     for key, value in params.items():
@@ -196,7 +241,8 @@ def _apply_overrides(base_cfg: Config, params: dict) -> Config:
 
 def _build_experiment(cfg: Config) -> dict:
     """Khởi tạo env, network, optimizer, buffer từ cfg."""
-    env = OpenSpiel2048Env(seed=cfg.env.seed)
+    shaping = cfg.reward_shaping if (cfg.reward_shaping and cfg.reward_shaping.enabled) else None
+    env = OpenSpiel2048Env(seed=cfg.env.seed, reward_shaping_cfg=shaping)
 
     q_net      = build_network(cfg, env.obs_dim, env.num_actions).to(DEVICE)
     target_net = build_network(cfg, env.obs_dim, env.num_actions).to(DEVICE)
@@ -206,11 +252,20 @@ def _build_experiment(cfg: Config) -> dict:
     optimizer = optim.Adam(q_net.parameters(), lr=cfg.training.learning_rate)
 
     if cfg.training.use_double_dqn:
-        replay = NStepReplayBuffer(
-            capacity=cfg.training.replay_capacity,
-            n_steps=cfg.training.n_steps,
-            gamma=cfg.training.gamma,
-        )
+        if cfg.per and cfg.per.enabled:
+            replay = PERNStepReplayBuffer(
+                capacity=cfg.training.replay_capacity,
+                n_steps=cfg.training.n_steps,
+                gamma=cfg.training.gamma,
+                alpha=cfg.per.alpha,
+                per_eps=cfg.per.eps,
+            )
+        else:
+            replay = NStepReplayBuffer(
+                capacity=cfg.training.replay_capacity,
+                n_steps=cfg.training.n_steps,
+                gamma=cfg.training.gamma,
+            )
     else:
         replay = ReplayBuffer(capacity=cfg.training.replay_capacity)
 
@@ -241,7 +296,7 @@ def _run_trial(exp: dict, num_episodes: int, eval_every: int = 25,
     optimizer  = exp["optimizer"]
     replay     = exp["replay"]
 
-    update_fn = double_dqn_update if cfg.training.use_double_dqn else dqn_update
+    use_per = isinstance(replay, PERNStepReplayBuffer)
 
     num_actions  = env.num_actions
     global_step  = 0
@@ -291,8 +346,18 @@ def _run_trial(exp: dict, num_episodes: int, eval_every: int = 25,
 
             if (len(replay) >= cfg.training.learn_start
                     and global_step % cfg.training.learn_every == 0):
-                batch = replay.sample(cfg.training.batch_size)
-                recent_loss = update_fn(batch, q_net, target_net, optimizer, cfg)
+                if use_per:
+                    beta = per_beta_by_step(global_step, cfg)
+                    batch, per_idx, is_w = replay.sample(cfg.training.batch_size, beta)
+                    recent_loss, td_err  = double_dqn_update(batch, q_net, target_net,
+                                                             optimizer, cfg, is_weights=is_w)
+                    replay.update_priorities(per_idx, td_err)
+                elif cfg.training.use_double_dqn:
+                    batch = replay.sample(cfg.training.batch_size)
+                    recent_loss, _ = double_dqn_update(batch, q_net, target_net, optimizer, cfg)
+                else:
+                    batch = replay.sample(cfg.training.batch_size)
+                    recent_loss = dqn_update(batch, q_net, target_net, optimizer, cfg)
 
             if global_step % cfg.training.target_sync_every == 0:
                 target_net.load_state_dict(q_net.state_dict())
@@ -356,6 +421,8 @@ _SPACES = {
     "wide":   SearchSpace,
     "narrow": NarrowSearchSpace,
     "net":    NetCompareSpace,
+    "per":    PERSearchSpace,
+    "reward": RewardSearchSpace,
 }
 
 
@@ -445,13 +512,20 @@ def run_search(
 
 def _fmt_params(params: dict) -> str:
     short = {
-        "learning_rate":   "lr",
-        "gamma":           "γ",
-        "n_steps":         "N",
-        "batch_size":      "bs",
-        "network_type":    "net",
-        "hidden_dim":      "hid",
-        "eps_decay_steps": "eps_steps",
+        "learning_rate":          "lr",
+        "gamma":                  "γ",
+        "n_steps":                "N",
+        "batch_size":             "bs",
+        "network_type":           "net",
+        "hidden_dim":             "hid",
+        "eps_decay_steps":        "eps_steps",
+        "per_enabled":            "per",
+        "per_alpha":              "α",
+        "per_beta_start":         "β0",
+        "reward_shaping_enabled": "shaping",
+        "empty_cells_weight":     "w_empty",
+        "corner_weight":          "w_corner",
+        "monotonicity_weight":    "w_mono",
     }
     return " ".join(f"{short.get(k,k)}={v}" for k, v in params.items())
 

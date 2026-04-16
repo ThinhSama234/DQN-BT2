@@ -58,6 +58,17 @@ def cmd_inference(args):
     )
 
 
+def cmd_expectimax(args):
+    """Chạy thuần ExpectiMax, không cần checkpoint."""
+    from inference.inference import run_expectimax
+    run_expectimax(
+        n_episodes=args.episodes,
+        depth=args.depth,
+        render=args.render,
+        seed=args.seed,
+    )
+
+
 def cmd_visualize(args):
     """Vẽ lại plot từ log JSON (nếu có) hoặc hướng dẫn."""
     results_path = os.path.join("grid_search_results", "results.json")
@@ -120,14 +131,25 @@ Ví dụ:
     p_search.add_argument("--trials",   type=int, default=20)
     p_search.add_argument("--episodes", type=int, default=300)
     p_search.add_argument("--seed",  type=int, default=0)
-    p_search.add_argument("--space", choices=["wide", "narrow", "net"], default="wide",
-                          help="wide=toàn bộ | narrow=thu hẹp | net=so sánh kiến trúc")
+    p_search.add_argument("--space",
+                          choices=["wide", "narrow", "net", "per", "reward"],
+                          default="wide",
+                          help="wide=toàn bộ | narrow=thu hẹp | net=kiến trúc | "
+                               "per=PER hyperparams | reward=reward shaping weights")
 
     # inference
     p_infer = sub.add_parser("inference", help="Chạy model đã train")
     p_infer.add_argument("checkpoint", help="Đường dẫn .pt hoặc thư mục checkpoints/")
     p_infer.add_argument("--episodes", type=int, default=10)
     p_infer.add_argument("--render",   action="store_true", help="In board từng bước")
+
+    # expectimax
+    p_exp = sub.add_parser("expectimax", help="Chạy thuần ExpectiMax (baseline, không cần checkpoint)")
+    p_exp.add_argument("--episodes", type=int, default=10)
+    p_exp.add_argument("--depth",    type=int, default=1, choices=[1, 2],
+                       help="Depth 1=nhanh (~120 node/move) | 2=tốt hơn (~4000 node/move)")
+    p_exp.add_argument("--render",   action="store_true", help="In board từng bước")
+    p_exp.add_argument("--seed",     type=int, default=42)
 
     # visualize
     sub.add_parser("visualize", help="Vẽ plot từ kết quả search")
@@ -140,10 +162,11 @@ def main():
     args   = parser.parse_args()
 
     dispatch = {
-        "train":     cmd_train,
-        "search":    cmd_search,
-        "inference": cmd_inference,
-        "visualize": cmd_visualize,
+        "train":      cmd_train,
+        "search":     cmd_search,
+        "inference":  cmd_inference,
+        "expectimax": cmd_expectimax,
+        "visualize":  cmd_visualize,
     }
     dispatch[args.command](args)
 
