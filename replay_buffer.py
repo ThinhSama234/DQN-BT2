@@ -20,23 +20,33 @@ NStepTransition = namedtuple("NStepTransition", (
 
 
 class ReplayBuffer:
-    """Buffer 1-step, dùng cho vanilla DQN."""
+    """
+    Buffer 1-step, dùng cho vanilla DQN.
+
+    Dùng list + con trỏ vòng thay vì deque để random.sample chạy O(batch_size)
+    thay vì O(n × batch_size) như deque (deque indexing là O(n)).
+    """
 
     def __init__(self, capacity: int):
-        self.buffer = deque(maxlen=capacity)
+        self.capacity = capacity
+        self._buf: list = []
+        self._pos: int  = 0
 
     def __len__(self) -> int:
-        return len(self.buffer)
+        return len(self._buf)
 
     def add(self, state, action, reward, next_state, done,
             legal_mask, next_legal_mask):
-        self.buffer.append(
-            Transition(state, action, reward, next_state, done,
+        t = Transition(state, action, reward, next_state, done,
                        legal_mask, next_legal_mask)
-        )
+        if len(self._buf) < self.capacity:
+            self._buf.append(t)
+        else:
+            self._buf[self._pos] = t
+        self._pos = (self._pos + 1) % self.capacity
 
     def sample(self, batch_size: int) -> Transition:
-        batch = random.sample(self.buffer, batch_size)
+        batch = random.sample(self._buf, batch_size)
         return Transition(*zip(*batch))
 
 
@@ -51,16 +61,21 @@ class NStepReplayBuffer:
     - 1-step target chỉ propagate reward 1 bước → học chậm khi reward thưa
     - N-step target đưa thông tin reward đi xa hơn mỗi update → học nhanh hơn
     - Trade-off: N lớn → bias tăng nếu policy thay đổi nhiều giữa các bước
+
+    Main buffer dùng list + con trỏ vòng để random.sample O(batch_size).
+    _window vẫn dùng deque vì kích thước nhỏ (tối đa n_steps phần tử).
     """
 
     def __init__(self, capacity: int, n_steps: int, gamma: float):
-        self.buffer  = deque(maxlen=capacity)
-        self.n_steps = n_steps
-        self.gamma   = gamma
+        self.capacity = capacity
+        self.n_steps  = n_steps
+        self.gamma    = gamma
+        self._buf: list = []
+        self._pos: int  = 0
         self._window = deque()   # rolling window, tối đa n_steps entries
 
     def __len__(self) -> int:
-        return len(self.buffer)
+        return len(self._buf)
 
     def add(self, state, action, reward, next_state, done,
             legal_mask, next_legal_mask):
@@ -98,7 +113,7 @@ class NStepReplayBuffer:
                 n_done = True
                 break
 
-        self.buffer.append(NStepTransition(
+        t_new = NStepTransition(
             state=state, action=action,
             reward=base[2], next_state=base[3], done=base[4],
             legal_mask=legal_mask, next_legal_mask=base[6],
@@ -106,9 +121,16 @@ class NStepReplayBuffer:
             n_step_next_state=n_next_state,
             n_step_done=float(n_done),
             n_step_next_legal_mask=n_next_legal_mask,
-        ))
+        )
+
+        if len(self._buf) < self.capacity:
+            self._buf.append(t_new)
+        else:
+            self._buf[self._pos] = t_new
+        self._pos = (self._pos + 1) % self.capacity
+
         self._window.popleft()
 
     def sample(self, batch_size: int) -> NStepTransition:
-        batch = random.sample(self.buffer, batch_size)
+        batch = random.sample(self._buf, batch_size)
         return NStepTransition(*zip(*batch))
