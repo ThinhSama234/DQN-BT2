@@ -159,7 +159,7 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
             # Lưu best model
             if ret_eval > best_eval_return:
                 best_eval_return = ret_eval
-                save_best(q_net, save_dir=output_dir)
+                save_best(q_net, optimizer, episode, global_step, cfg, save_dir=output_dir)
                 logger.info("New best eval return=%.1f at ep=%d → best_model.pt saved", ret_eval, episode)
 
             q_net.train()

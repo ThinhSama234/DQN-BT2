@@ -42,9 +42,22 @@ def save_checkpoint(
     return path
 
 
-def save_best(q_net: nn.Module, save_dir: str = "checkpoints") -> str:
-    """Lưu riêng một file best_model.pt (ghi đè mỗi khi cải thiện)."""
+def save_best(
+    q_net: nn.Module,
+    optimizer: torch.optim.Optimizer = None,
+    episode: int = 0,
+    global_step: int = 0,
+    cfg=None,
+    save_dir: str = "checkpoints",
+) -> str:
+    """Lưu best_model.pt với đầy đủ state để có thể resume."""
     os.makedirs(save_dir, exist_ok=True)
     path = os.path.join(save_dir, "best_model.pt")
-    torch.save({"q_net_state_dict": q_net.state_dict()}, path)
+    torch.save({
+        "episode":              episode,
+        "global_step":          global_step,
+        "q_net_state_dict":     q_net.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict() if optimizer else None,
+        "cfg":                  cfg,
+    }, path)
     return path
