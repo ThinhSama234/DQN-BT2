@@ -33,7 +33,10 @@ SAVE_EVERY = 200   # lưu checkpoint định kỳ mỗi n episode
 def train():
     global global_step, best_eval_return
 
-    for episode in tqdm(range(1, NUM_EPISODES + 1), desc="Training"):
+    recent_loss = 0.0   # loss update gần nhất để hiển thị trên bar
+
+    pbar = tqdm(range(1, NUM_EPISODES + 1), desc="Training", dynamic_ncols=True)
+    for episode in pbar:
         obs  = train_env.reset(seed=SEED + episode)
         done = False
         ep_return = 0.0
@@ -68,9 +71,9 @@ def train():
 
             if len(replay) >= LEARN_START and global_step % LEARN_EVERY == 0:
                 batch = replay.sample(BATCH_SIZE)
-                loss  = dqn_update(batch)
-                loss_history.append(loss)
-                logger.debug("step=%d  loss=%.4f", global_step, loss)
+                recent_loss = dqn_update(batch)
+                loss_history.append(recent_loss)
+                logger.debug("step=%d  loss=%.4f", global_step, recent_loss)
 
             if global_step % TARGET_SYNC_EVERY == 0:
                 target_net.load_state_dict(q_net.state_dict())
@@ -80,6 +83,15 @@ def train():
         episode_lengths.append(ep_len)
         logger.debug("ep=%d  return=%.1f  len=%d  eps=%.3f",
                      episode, ep_return, ep_len, epsilon_by_step(global_step))
+
+        # ── Cập nhật thanh progress sau mỗi episode ───────────────────────────
+        pbar.set_postfix(
+            ret=f"{ep_return:.0f}",
+            best=f"{best_eval_return:.0f}",
+            eps=f"{epsilon_by_step(global_step):.3f}",
+            loss=f"{recent_loss:.4f}",
+            step=global_step,
+        )
 
         # ── Periodic save ─────────────────────────────────────────────────────
         if episode % SAVE_EVERY == 0:
@@ -96,6 +108,8 @@ def train():
 
             while not done_eval and steps_eval < MAX_STEPS_PER_EPISODE:
                 legal  = eval_env.legal_actions()
+                if not legal:
+                    break
                 action = masked_greedy_action(q_net, obs_eval, legal, num_actions, epsilon=0.0, device=DEVICE)
                 obs_eval, reward, done_eval, _ = eval_env.step(action)
                 ret_eval   += reward
