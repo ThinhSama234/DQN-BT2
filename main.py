@@ -28,6 +28,9 @@ def cmd_train(args):
     if args.guide is not None:
         cfg.guide.enabled = args.guide
 
+    if args.double_dqn is not None:
+        cfg.training.use_double_dqn = args.double_dqn
+
     import training.train as train_module
     train_module.NUM_EPISODES = cfg.training.num_episodes
     train_module.main(resume_from=args.resume, output_dir=args.output_dir)
@@ -107,6 +110,9 @@ Ví dụ:
                               "Dùng /drive/MyDrive/... trên Colab")
     p_train.add_argument("--guide", action=argparse.BooleanOptionalAction, default=None,
                          help="Bật/tắt ExpectiMax guide (mặc định: theo config.yaml)")
+    p_train.add_argument("--double-dqn", action=argparse.BooleanOptionalAction, default=None,
+                         help="Dùng Double DQN + N-step (mặc định: theo config.yaml). "
+                              "--no-double-dqn = vanilla DQN")
 
     # search
     p_search = sub.add_parser("search", help="Hyperparameter grid/random search")
