@@ -100,22 +100,33 @@ class NarrowSearchSpace:
 
     Dùng để fine-tune với nhiều episode hơn sau khi có kết quả broad search.
     """
-    # Optimizer — thu hẹp vùng tốt
-    learning_rate: list = field(default_factory=lambda: [3e-4, 5e-4, 1e-3])
-
-    # Bellman — cố định gamma tốt nhất
-    gamma:   list = field(default_factory=lambda: [0.99])
-    n_steps: list = field(default_factory=lambda: [3, 5])
-
-    # Sampling — batch nhỏ hơn tốt hơn
-    batch_size: list = field(default_factory=lambda: [128])
-
-    # Network — dueling + hidden lớn
-    network_type: list = field(default_factory=lambda: ["dueling"])
-    hidden_dim:   list = field(default_factory=lambda: [256])
-
-    # Epsilon decay — thử dài hơn một chút
+    learning_rate:   list = field(default_factory=lambda: [3e-4, 5e-4, 1e-3])
+    gamma:           list = field(default_factory=lambda: [0.99])
+    n_steps:         list = field(default_factory=lambda: [3, 5])
+    batch_size:      list = field(default_factory=lambda: [128])
+    network_type:    list = field(default_factory=lambda: ["dueling"])
+    hidden_dim:      list = field(default_factory=lambda: [256])
     eps_decay_steps: list = field(default_factory=lambda: [50_000, 100_000])
+
+
+@dataclass
+class NetCompareSpace:
+    """
+    So sánh kiến trúc mạng — fix hết params tốt nhất, chỉ vary network_type.
+
+    Dùng để kiểm tra xem dueling có thực sự tốt hơn vanilla/deep không
+    với cùng điều kiện (lr, gamma, n_steps, ... đều giống nhau).
+
+    Mặc định dùng params tốt nhất từ narrow search:
+      lr=5e-4, γ=0.99, N=3, bs=128, hid=256, eps_steps=100k
+    """
+    learning_rate:   list = field(default_factory=lambda: [5e-4])
+    gamma:           list = field(default_factory=lambda: [0.99])
+    n_steps:         list = field(default_factory=lambda: [3])
+    batch_size:      list = field(default_factory=lambda: [128])
+    network_type:    list = field(default_factory=lambda: ["vanilla", "deep", "dueling"])
+    hidden_dim:      list = field(default_factory=lambda: [256])
+    eps_decay_steps: list = field(default_factory=lambda: [100_000])
 
 
 def _all_combinations(space: SearchSpace) -> list[dict]:
@@ -341,13 +352,20 @@ def _greedy_eval(q_net, cfg: Config, num_actions: int, n_ep: int = 3) -> float:
 # Grid / random search runner
 # ─────────────────────────────────────────────────────────────────────────────
 
+_SPACES = {
+    "wide":   SearchSpace,
+    "narrow": NarrowSearchSpace,
+    "net":    NetCompareSpace,
+}
+
+
 def run_search(
     mode: str = "random",
     n_trials: int = 20,
     num_episodes: int = 300,
     save_best: bool = True,
     seed: int = 0,
-    narrow: bool = False,
+    space: str = "wide",
 ):
     """
     Chạy grid search hoặc random search.
@@ -358,20 +376,22 @@ def run_search(
         num_episodes: Số episode mỗi trial (nên ngắn hơn train thật, VD 200-500)
         save_best:    Lưu config tốt nhất ra best_config.yaml
         seed:         Seed cho random search
-        narrow:       True → dùng NarrowSearchSpace (thu hẹp từ kết quả broad search)
+        space:        "wide"   → SearchSpace (toàn bộ)
+                      "narrow" → NarrowSearchSpace (thu hẹp từ broad search)
+                      "net"    → NetCompareSpace (so sánh kiến trúc mạng)
     """
     base_cfg = load_config(_CFG_PATH)
-    if narrow:
-        space = NarrowSearchSpace()
-        print("  [Search space: NARROW — dueling/γ=0.99/hid=256/bs=128]")
-    else:
-        space = SearchSpace()
+    space_cls = _SPACES.get(space)
+    if space_cls is None:
+        raise ValueError(f"space '{space}' không hợp lệ. Chọn: {list(_SPACES)}")
+    space_obj = space_cls()
+    print(f"  [Search space: {space.upper()}]")
 
     if mode == "grid":
-        combos = _all_combinations(space)
+        combos = _all_combinations(space_obj)
         print(f"\nGrid search: {len(combos)} combinations")
     else:
-        combos = _random_combinations(space, n=n_trials, seed=seed)
+        combos = _random_combinations(space_obj, n=n_trials, seed=seed)
         print(f"\nRandom search: {len(combos)} trials  (seed={seed})")
 
     print(f"Episodes per trial: {num_episodes}  |  Device: {DEVICE}\n")
@@ -523,8 +543,8 @@ def main():
                         help="Seed cho random search (mặc định: 0)")
     parser.add_argument("--no-save",  action="store_true",
                         help="Không lưu best_config.yaml")
-    parser.add_argument("--narrow",   action="store_true",
-                        help="Dùng NarrowSearchSpace (thu hẹp từ kết quả broad search)")
+    parser.add_argument("--space",    choices=list(_SPACES), default="wide",
+                        help="wide=toàn bộ | narrow=thu hẹp | net=so sánh kiến trúc (mặc định: wide)")
     args = parser.parse_args()
 
     run_search(
@@ -533,7 +553,7 @@ def main():
         num_episodes=args.episodes,
         save_best=not args.no_save,
         seed=args.seed,
-        narrow=args.narrow,
+        space=args.space,
     )
 
 
