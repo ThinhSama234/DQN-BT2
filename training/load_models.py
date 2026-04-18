@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import torch
 import torch.optim as optim
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import LambdaLR
 
 from config import Config, load_config
 from expectimax import ExpectiMaxGuide, guide_prob_by_step as _guide_prob_by_step
@@ -48,11 +48,13 @@ target_net.eval()
 
 # ── Optimizer + LR Scheduler ──────────────────────────────────────────────────
 optimizer = optim.Adam(q_net.parameters(), lr=cfg.training.learning_rate)
-scheduler = StepLR(
-    optimizer,
-    step_size=cfg.training.lr_decay_every,
-    gamma=cfg.training.lr_decay_factor,
-)
+
+def _lr_lambda(epoch: int) -> float:
+    decay = cfg.training.lr_decay_factor ** (epoch // cfg.training.lr_decay_every)
+    floor = cfg.training.lr_min / cfg.training.learning_rate
+    return max(decay, floor)
+
+scheduler = LambdaLR(optimizer, lr_lambda=_lr_lambda)
 
 # ── Replay buffer ─────────────────────────────────────────────────────────────
 if cfg.training.use_double_dqn:

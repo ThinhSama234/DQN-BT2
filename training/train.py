@@ -63,6 +63,13 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
             tqdm.write(f"Weights-only: global_step → {global_step} | eps={cfg.epsilon.end:.3f}")
         else:
             tqdm.write(f"Resumed ep={start_episode-1} | step={global_step} | best={best_eval_return:.1f}")
+
+        # Clamp LR về lr_min nếu scheduler cũ đã decay quá thấp
+        lr_min = cfg.training.lr_min
+        for pg in optimizer.param_groups:
+            if pg["lr"] < lr_min:
+                pg["lr"] = lr_min
+                tqdm.write(f"LR clamped → {lr_min:.1e} (lr_min floor)")
         logger.info("Resumed from %s | ep=%d step=%d best=%.1f",
                     resume_from, start_episode - 1, global_step, best_eval_return)
 
