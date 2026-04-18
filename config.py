@@ -23,6 +23,7 @@ class TrainingConfig:
     eval_every: int = 50          # eval mỗi n episode
     lr_decay_every: int = 3000    # decay LR mỗi n episode
     lr_decay_factor: float = 0.5  # nhân LR với factor này
+    lr_min: float = 1e-5          # sàn LR
 
 
 @dataclass
