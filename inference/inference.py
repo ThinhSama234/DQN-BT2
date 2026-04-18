@@ -152,12 +152,22 @@ def run_expectimax(n_episodes: int = 10, depth: int = 1, render: bool = False, s
 
 def main():
     parser = argparse.ArgumentParser(description="DQN 2048 Inference")
-    parser.add_argument("checkpoint", help="Path to .pt checkpoint file or checkpoints/ directory")
-    parser.add_argument("--episodes", type=int, default=10, help="Number of episodes to run (default: 10)")
-    parser.add_argument("--render",   action="store_true",  help="Print board after each step")
+    parser.add_argument("checkpoint", nargs="?", default=None,
+                        help="Path to .pt checkpoint file or checkpoints/ directory")
+    parser.add_argument("--episodes",   type=int,  default=10, help="Number of episodes (default: 10)")
+    parser.add_argument("--render",     action="store_true",   help="Print board after each step")
+    parser.add_argument("--expectimax", action="store_true",   help="Run pure ExpectiMax (no DQN)")
+    parser.add_argument("--depth",      type=int,  default=1,  help="ExpectiMax depth (default: 1)")
+    parser.add_argument("--seed",       type=int,  default=42, help="Random seed (default: 42)")
     args = parser.parse_args()
 
-    run_inference(args.checkpoint, n_episodes=args.episodes, render=args.render)
+    if args.expectimax:
+        run_expectimax(n_episodes=args.episodes, depth=args.depth,
+                       render=args.render, seed=args.seed)
+    else:
+        if args.checkpoint is None:
+            parser.error("checkpoint is required when not using --expectimax")
+        run_inference(args.checkpoint, n_episodes=args.episodes, render=args.render)
 
 
 if __name__ == "__main__":

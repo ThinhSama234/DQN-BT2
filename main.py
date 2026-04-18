@@ -58,6 +58,20 @@ def cmd_inference(args):
     )
 
 
+def cmd_evaluate(args):
+    """So sánh fair ExpectiMax vs DQN/DDQN trên cùng seeds."""
+    from evaluate import main as eval_main
+    import sys
+    argv = []
+    if args.expectimax:
+        argv += ["--expectimax", "--depth", str(args.depth)]
+    for ckpt in args.checkpoint:
+        argv += ["--checkpoint", ckpt]
+    argv += ["--episodes", str(args.episodes), "--seed", str(args.seed)]
+    sys.argv = ["evaluate.py"] + argv
+    eval_main()
+
+
 def cmd_expectimax(args):
     """Chạy thuần ExpectiMax, không cần checkpoint."""
     from inference.inference import run_expectimax
@@ -104,6 +118,7 @@ Ví dụ:
   python main.py search --mode grid --episodes 100
   python main.py inference checkpoints/best_model.pt
   python main.py inference checkpoints/best_model.pt --episodes 5 --render
+  python main.py evaluate --expectimax --checkpoint checkpoints/best_model.pt --episodes 20
   python main.py visualize
         """,
     )
@@ -143,6 +158,15 @@ Ví dụ:
     p_infer.add_argument("--episodes", type=int, default=10)
     p_infer.add_argument("--render",   action="store_true", help="In board từng bước")
 
+    # evaluate
+    p_eval = sub.add_parser("evaluate", help="So sánh fair ExpectiMax vs DQN/DDQN trên cùng seeds")
+    p_eval.add_argument("--expectimax",  action="store_true",     help="Thêm ExpectiMax vào so sánh")
+    p_eval.add_argument("--depth",       type=int, default=1, choices=[1, 2])
+    p_eval.add_argument("--checkpoint",  action="append", default=[], metavar="PATH",
+                        help="Checkpoint .pt (có thể dùng nhiều lần)")
+    p_eval.add_argument("--episodes",    type=int, default=20)
+    p_eval.add_argument("--seed",        type=int, default=42)
+
     # expectimax
     p_exp = sub.add_parser("expectimax", help="Chạy thuần ExpectiMax (baseline, không cần checkpoint)")
     p_exp.add_argument("--episodes", type=int, default=10)
@@ -165,6 +189,7 @@ def main():
         "train":      cmd_train,
         "search":     cmd_search,
         "inference":  cmd_inference,
+        "evaluate":   cmd_evaluate,
         "expectimax": cmd_expectimax,
         "visualize":  cmd_visualize,
     }
