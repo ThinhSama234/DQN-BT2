@@ -20,10 +20,9 @@ import numpy as np
 import torch
 
 from expectimax import ExpectiMaxGuide
-from environment_game import OpenSpiel2048Env
+from environment_game import Game2048Env
 from dqn_update import masked_greedy_action, DEVICE
 from models.load_model import load_checkpoint
-from helper import parse_board_numbers
 
 
 def _run_agent(get_action, env, seeds, max_steps=10_000):
@@ -43,9 +42,7 @@ def _run_agent(get_action, env, seeds, max_steps=10_000):
             total_return += reward
             steps += 1
         max_tile = 0
-        board = parse_board_numbers(env.state)
-        if board is not None:
-            max_tile = int(board.max())
+        max_tile = int(env.board.max())
         results.append({"return": total_return, "steps": steps, "max_tile": max_tile})
     return results
 
@@ -101,7 +98,7 @@ def main():
         parser.error("Cần ít nhất --expectimax hoặc --checkpoint PATH")
 
     seeds = list(range(args.seed, args.seed + args.episodes))
-    env   = OpenSpiel2048Env(seed=args.seed)
+    env   = Game2048Env(seed=args.seed)
     num_actions = env.num_actions
     obs_dim     = env.obs_dim
 

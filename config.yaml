@@ -7,13 +7,13 @@ training:
   learn_start: 1000            # bắt đầu train khi buffer có ít nhất n transition
   learn_every: 4               # update mỗi n bước
   target_sync_every: 1000      # tăng lên cho ổn định khi train dài
-  num_episodes: 20000          # train thật (override bằng --episodes)
+  num_episodes: 60000          # train thật (override bằng --episodes)
   max_steps_per_episode: 10000 # giới hạn bước mỗi episode
   use_double_dqn: true         # Double DQN + N-step
   n_steps: 3                   # best từ search
   loss: "huber"                # mse | huber | smooth_l1
   save_every: 500              # lưu checkpoint mỗi n episode
-  eval_games: 5                # trung bình 5 game — giảm noise eval
+  eval_games: 3                # trung bình 3 game — cân bằng tốc độ vs noise
   eval_every: 100              # eval mỗi 100 ep
   lr_decay_every: 3000         # decay LR mỗi n episode
   lr_decay_factor: 0.5         # 3e-4 → 1.5e-4 (ep3000) → 7.5e-5 (ep6000) → ...
@@ -38,7 +38,7 @@ reward_shaping:
   monotonicity_weight: 5.0   # +5 * monotonicity score
 
 per:
-  enabled: false             # Prioritized Experience Replay
+  enabled: true              # Prioritized Experience Replay
   alpha: 0.6                 # mức ưu tiên (0=uniform, 1=full TD-error priority)
   beta_start: 0.4            # IS correction ban đầu
   beta_end: 1.0              # IS correction cuối (anneal về 1.0)
@@ -46,6 +46,6 @@ per:
 
 guide:
   enabled: true
-  depth: 1               # 1=nhanh (~120 node/move) | 2=tốt hơn (~4000 node/move)
+  depth: 2               # 1=nhanh (~120 node/move) | 2=tốt hơn (~4000 node/move)
   decay_steps: 300000    # guide fades sau 300k steps (~600 ep) — tăng từ 30k
   min_prob: 0.0          # tắt hoàn toàn sau decay

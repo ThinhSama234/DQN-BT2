@@ -84,7 +84,6 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
     use_per  = isinstance(replay, PERNStepReplayBuffer)
     use_guide = guide is not None
 
-    # Tạo eval_env một lần, reuse bằng reset() — tránh load pyspiel mỗi lần eval
     eval_env = OpenSpiel2048Env(seed=9999)
 
     pbar = tqdm(range(start_episode, NUM_EPISODES + 1),

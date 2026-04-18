@@ -11,7 +11,6 @@ from config import load_config
 from networks import DQNNetwork
 from dqn_update import masked_greedy_action, DEVICE
 from environment_game import OpenSpiel2048Env
-from helper import parse_board_numbers
 from models.load_model import load_checkpoint, load_best
 
 
@@ -46,18 +45,10 @@ def run_episode(q_net, env, num_actions, max_steps=10_000, render=False):
         steps += 1
 
         if render:
-            board = parse_board_numbers(env.state)
-            if board is not None:
-                print(board)
-                print(f"  reward={reward:.0f}  total={total_return:.0f}")
-                print()
+            print(env.board)
+            print(f"  reward={reward:.0f}  total={total_return:.0f}\n")
 
-    # Lấy max tile từ board cuối
-    max_tile = 0
-    if env.state is not None:
-        board = parse_board_numbers(env.state)
-        if board is not None:
-            max_tile = int(board.max())
+    max_tile = int(env.board.max())
 
     return {"return": total_return, "steps": steps, "max_tile": max_tile}
 
@@ -129,15 +120,10 @@ def run_expectimax(n_episodes: int = 10, depth: int = 1, render: bool = False, s
             steps += 1
 
             if render:
-                board = parse_board_numbers(env.state)
-                if board is not None:
-                    print(board)
-                    print(f"  reward={reward:.0f}  total={total_return:.0f}\n")
+                print(env.board)
+                print(f"  reward={reward:.0f}  total={total_return:.0f}\n")
 
-        max_tile = 0
-        board = parse_board_numbers(env.state)
-        if board is not None:
-            max_tile = int(board.max())
+        max_tile = int(env.board.max())
 
         results.append({"return": total_return, "steps": steps, "max_tile": max_tile})
         print(f"  Episode {i+1:3d} | return={total_return:8.1f} | steps={steps:5d} | max_tile={max_tile}")
