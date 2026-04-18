@@ -49,7 +49,12 @@ def train(resume_from: str = None, output_dir: str = "checkpoints"):
             optimizer.load_state_dict(ckpt["optimizer_state_dict"])
 
         if ckpt.get("scheduler_state_dict") is not None:
-            scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+            try:
+                scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+            except (KeyError, ValueError):
+                # Checkpoint cũ dùng StepLR, không tương thích với LambdaLR mới
+                # Bỏ qua — LR sẽ được clamp về lr_min ở bước dưới
+                tqdm.write("Scheduler state không tương thích (StepLR→LambdaLR), bỏ qua.")
 
         global_step      = ckpt.get("global_step", 0)
         start_episode    = ckpt.get("episode", 0) + 1
