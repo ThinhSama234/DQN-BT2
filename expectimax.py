@@ -66,31 +66,26 @@ def _heuristic(board: np.ndarray) -> float:
 
     score_empty = float(np.sum(board == 0)) * 100.0
 
+    # Monotonicity — vectorized
     score_mono = 0.0
-    for row in log_b:
-        d = np.diff(row)
-        score_mono += max(float(np.sum(d[d > 0])), float(np.sum(-d[d < 0])))
-    for col in log_b.T:
-        d = np.diff(col)
-        score_mono += max(float(np.sum(d[d > 0])), float(np.sum(-d[d < 0])))
+    for rows in [log_b, log_b.T]:
+        d = np.diff(rows, axis=1)
+        pos = np.sum(np.maximum(d, 0), axis=1)
+        neg = np.sum(np.maximum(-d, 0), axis=1)
+        score_mono += float(np.sum(np.maximum(pos, neg)))
     score_mono *= 47.0
 
-    score_smooth = 0.0
-    for i in range(4):
-        for j in range(4):
-            if board[i, j] == 0:
-                continue
-            for di, dj in [(0, 1), (1, 0)]:
-                ni, nj = i + di, j + dj
-                if 0 <= ni < 4 and 0 <= nj < 4 and board[ni, nj] > 0:
-                    score_smooth -= abs(log_b[i, j] - log_b[ni, nj])
-    score_smooth *= 10.0
+    # Smoothness — vectorized, không dùng Python loop
+    nz_h = (board[:, :-1] > 0) & (board[:, 1:] > 0)
+    nz_v = (board[:-1, :] > 0) & (board[1:, :] > 0)
+    score_smooth = -(np.sum(np.abs(log_b[:, :-1] - log_b[:, 1:]) * nz_h)
+                   + np.sum(np.abs(log_b[:-1, :] - log_b[1:, :]) * nz_v)) * 10.0
 
     max_val = log_b.max()
     corners = [log_b[0, 0], log_b[0, 3], log_b[3, 0], log_b[3, 3]]
     score_corner = 35.0 * max_val if max_val in corners else 0.0
 
-    return score_empty + score_mono + score_smooth + score_corner
+    return score_empty + float(score_mono) + float(score_smooth) + score_corner
 
 
 # ── ExpectiMax ────────────────────────────────────────────────────────────────

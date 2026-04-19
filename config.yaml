@@ -46,6 +46,6 @@ per:
 
 guide:
   enabled: true
-  depth: 2               # 1=nhanh (~120 node/move) | 2=tốt hơn (~4000 node/move)
+  depth: 1               # 1=nhanh (~120 node/move) | 2=tốt hơn (~4000 node/move)
   decay_steps: 300000    # guide fades sau 300k steps (~600 ep) — tăng từ 30k
   min_prob: 0.0          # tắt hoàn toàn sau decay
